@@ -5,13 +5,23 @@ const {
   ChannelType, SlashCommandBuilder, REST, Routes, AttachmentBuilder, Partials,
 } = require('discord.js');
 const { db, S } = require('./db');
-const { PAY, CAT, STATUS, fmt, totalMonths, amountFor, price, payInfo, image, imgUrl, imgFiles, transcript } = require('./util');
+const { PAY, CAT, STATUS, fmt, totalMonths, amountFor, price, payInfo, image, imgUrl, imgFiles, transcriptFiles } = require('./util');
 const { logTo } = require('./logs');
 const tickets = require('./tickets');
+const protect = require('./protect');
+const extras = require('./extras');
+const shop = require('./shop');
+const community = require('./community');
+const backup = require('./backup');
+const bl = require('./blacklist');
+const botctl = require('./botctl');
+backup.autoRestoreOnBoot(); // لو فيه ملف نسخة داخل data/restore يتم استرجاعه قبل التشغيل
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
+const { asset, sendLine } = require('./info');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildModeration],
+    GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildWebhooks],
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 const EPH = 64;
@@ -33,6 +43,7 @@ function orderEmbed(o) {
     { name: '⏱️ المجموع', value: `${fmt(total)} شهر نيترو`, inline: true },
     { name: '🏷️ الخصم', value: `${o.bundle + o.coupon_pct}%${o.coupon ? ` (كوبون ${o.coupon})` : ''}`, inline: true },
     { name: `${PAY[o.pay].emoji} الدفع`, value: `**${amountFor(total, o.pay)}**` },
+    ...(o.warranty_until ? [{ name: '🛡️ الضمان', value: shop.warrantyShort(o).replace(/^ • 🛡️ /, '') }] : []),
   ).setFooter({ text: 'Nova Store • الأسعار تقديرية وتُأكَّد من الإدارة' }).setTimestamp();
   e.setImage(imgUrl('ticket_image', 'store_ticket.png'));
   return e;
@@ -66,6 +77,17 @@ function pricesEmbed() {
   e.addFields({ name: '🎁 العروض', value: `• باقة ${S('bundle_min')} بوتات = خصم ${S('bundle_discount')}%\n• كل البوتات = نيترو ${S('all_bots_months')} شهر\n• بوت مخصص بالكامل من ${S('custom_min_months')} أشهر\n• ندعم عملات الألعاب والبوست (ماعدا Apple Pay والتحويلات البنكية)` });
   return e;
 }
+// الأسعار: صورة (الافتراضي) أو إيمبد يتحدّث من الداشبورد
+function pricesReply() {
+  if (S('prices_use_image') !== '1') return { embeds: [pricesEmbed()], flags: EPH };
+  const u = S('prices_image');
+  return {
+    content: `💰 **قائمة الأسعار — Nova Store**\n🎁 باقة ${S('bundle_min')} بوتات = خصم ${S('bundle_discount')}% • كل البوتات = نيترو ${S('all_bots_months')} شهر • المخصص من ${S('custom_min_months')} أشهر`,
+    files: u ? [] : [asset('prices.png')],
+    embeds: u ? [new EmbedBuilder().setColor(COLOR).setImage(u)] : [],
+    flags: EPH,
+  };
+}
 async function sendPanel(channelId) {
   const ch = await client.channels.fetch(channelId);
   const e = new EmbedBuilder().setColor(COLOR).setTitle(S('panel_title')).setDescription(S('panel_desc'));
@@ -77,6 +99,12 @@ async function sendPanel(channelId) {
   )] });
 }
 
+const lineAfter = async (id) => { if (S('line_after_panels') === '1') await sendLine(await client.channels.fetch(id)); };
+const ctx = {
+  sendPanel: async (id) => { await sendPanel(id); await lineAfter(id); },
+  ticketPanel: async (id) => { await tickets.sendPanel(client, id); await lineAfter(id); },
+};
+
 // ---------- Commands ----------
 const commands = [
   new SlashCommandBuilder().setName('store-panel').setDescription('إرسال بانل المتجر').setDefaultMemberPermissions(P.Administrator)
@@ -87,18 +115,19 @@ const commands = [
   new SlashCommandBuilder().setName('my-orders').setDescription('طلباتي'),
   new SlashCommandBuilder().setName('order').setDescription('معلومات طلب (ستاف)').addIntegerOption(o => o.setName('id').setDescription('رقم الطلب').setRequired(true)),
   new SlashCommandBuilder().setName('top-staff').setDescription('أفضل الستاف بالنقاط'),
-].map(c => c.toJSON());
+].map(c => c.toJSON()).concat(extras.commands, shop.commands, community.commands, backup.commands, botctl.commands);
 
 async function onCommand(i) {
-  if (i.commandName === 'prices') return i.reply({ embeds: [pricesEmbed()], flags: EPH });
+  if (await extras.onCommand(i, ctx) || await shop.onCommand(i) || await community.onCommand(i) || await backup.onCommand(i) || await botctl.onCommand(i)) return;
+  if (i.commandName === 'prices') return i.reply(pricesReply());
   if (i.commandName === 'store-panel') {
     const ch = i.options.getChannel('channel') || i.channel;
-    await sendPanel(ch.id);
+    await ctx.sendPanel(ch.id);
     return i.reply({ content: `✅ تم إرسال البانل في ${ch}`, flags: EPH });
   }
   if (i.commandName === 'ticket-panel') {
     const ch = i.options.getChannel('channel') || i.channel;
-    await tickets.sendPanel(client, ch.id);
+    await ctx.ticketPanel(ch.id);
     return i.reply({ content: `✅ تم إرسال بانل التذاكر في ${ch}`, flags: EPH });
   }
   if (i.commandName === 'my-orders') return myOrders(i);
@@ -117,15 +146,16 @@ async function onCommand(i) {
 }
 function myOrders(i) {
   const rows = db.prepare('SELECT * FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 10').all(i.user.id);
-  return i.reply({ flags: EPH, content: rows.map(o => `**#${o.id}** — ${STATUS[o.status]} — ${fmt(totalMonths(o))} شهر`).join('\n') || 'ما عندك طلبات للحين' });
+  return i.reply({ flags: EPH, content: rows.map(o => `**#${o.id}** — ${STATUS[o.status]} — ${fmt(totalMonths(o))} شهر${shop.warrantyShort(o)}`).join('\n') || 'ما عندك طلبات للحين' });
 }
 
 // ---------- Buttons ----------
 async function onButton(i) {
   const [act, id, extra] = i.customId.split(':');
-  if (act === 'prices') return i.reply({ embeds: [pricesEmbed()], flags: EPH });
+  if (act === 'prices') return i.reply(pricesReply());
   if (act === 'myorders') return myOrders(i);
   if (act === 'order') {
+    if (bl.get(i.user.id)) return i.reply({ content: bl.DENY, flags: EPH });
     if (S('store_open') !== '1') return i.reply({ content: '🔒 المتجر مقفل حالياً عن استقبال الطلبات، ارجع لنا قريب.', flags: EPH });
     const open = db.prepare("SELECT COUNT(*) c FROM orders WHERE user_id=? AND status NOT IN ('delivered','cancelled')").get(i.user.id).c;
     if (open >= +S('max_open_orders')) return i.reply({ content: `❌ عندك ${open} طلبات مفتوحة، أكمل أو سكّر اللي قبل.`, flags: EPH });
@@ -157,7 +187,7 @@ async function onButton(i) {
     db.prepare('UPDATE orders SET closed=? WHERE id=?').run(Date.now(), o.id);
     await i.reply('🔒 جاري حفظ المحادثة وإغلاق التذكرة بعد 5 ثواني...');
     await log(i.guild, new EmbedBuilder().setColor(0xef476f).setTitle(`🔒 إغلاق طلب #${o.id}`).setDescription(`العميل: <@${o.user_id}>\nأغلقه: <@${i.user.id}>\nالحالة: ${STATUS[getOrder(o.id).status]}`),
-      [new AttachmentBuilder(await transcript(i.channel), { name: `order-${o.id}.txt` })]);
+      (await transcriptFiles(i.channel, `order-${o.id}`)).files());
     return setTimeout(() => i.channel.delete().catch(() => {}), 5000);
   }
   if (!staff) return i.reply({ content: '❌ للستاف فقط', flags: EPH });
@@ -173,6 +203,7 @@ async function onButton(i) {
     await i.reply('💳 تم تأكيد الدفع، يبدأ التنفيذ 🛠️');
     notify(i.client, o.user_id, `💳 تم تأكيد الدفع لطلبك #${o.id}، بدأ التنفيذ 🛠️`);
     await log(i.guild, new EmbedBuilder().setColor(0x06d6a0).setTitle(`💳 دفع طلب #${o.id}`).setDescription(`<@${o.user_id}> — ${amountFor(totalMonths(o), o.pay)}\nأكده: ${i.user}`));
+    await shop.onStatus(i.guild, getOrder(o.id), i.channel); // فاتورة للعميل
   } else if (act === 'deliver') {
     db.prepare("UPDATE orders SET status='delivered' WHERE id=?").run(o.id);
     db.prepare('INSERT INTO staff(user_id) VALUES(?) ON CONFLICT DO NOTHING').run(i.user.id);
@@ -182,6 +213,7 @@ async function onButton(i) {
       [1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji('⭐').setStyle(ButtonStyle.Secondary)))] });
     notify(i.client, o.user_id, `✅ تم تسليم طلبك #${o.id}! شكراً لثقتك في Nova Store 💜`);
     await log(i.guild, new EmbedBuilder().setColor(0x118ab2).setTitle(`✅ تسليم طلب #${o.id}`).setDescription(`العميل <@${o.user_id}>\nالمسلّم: ${i.user}`));
+    await shop.onStatus(i.guild, getOrder(o.id), i.channel); // بدء الضمان
   }
   await refreshTicket(i.guild, getOrder(o.id));
 }
@@ -207,8 +239,8 @@ async function createOrder(i, ids, pay, details) {
     ? { id: 'custom', name: 'بوت مخصص (السعر يُتفق عليه)', months: +S('custom_min_months'), emoji: '✨' }
     : db.prepare('SELECT * FROM products WHERE id=?').get(x)).filter(Boolean);
   const pr = price(prods);
-  const r = db.prepare('INSERT INTO orders(user_id,items,details,base,bundle,coupon_pct,pay,created) VALUES(?,?,?,?,?,?,?,?)')
-    .run(i.user.id, JSON.stringify(prods), details, pr.base, pr.bundle, 0, pay, Date.now());
+  const r = db.prepare('INSERT INTO orders(user_id,items,details,base,bundle,coupon_pct,pay,created,last_activity) VALUES(?,?,?,?,?,?,?,?,?)')
+    .run(i.user.id, JSON.stringify(prods), details, pr.base, pr.bundle, 0, pay, Date.now(), Date.now());
   const oid = r.lastInsertRowid, staffRole = S('staff_role');
   const ow = [
     { id: i.guild.id, deny: [P.ViewChannel] },
@@ -248,6 +280,8 @@ async function onModal(i) {
 client.on('interactionCreate', async i => {
   try {
     if ((i.isButton() || i.isStringSelectMenu() || i.isModalSubmit()) && i.customId.startsWith('tk_') && await tickets.handle(i)) return;
+    if ((i.isButton() || i.isModalSubmit()) && i.customId.startsWith('vf_') && await protect.handle(i)) return;
+    if (!i.isChatInputCommand() && !i.isAutocomplete?.() && (await shop.handle(i) || await community.handle(i) || await backup.handle(i))) return;
     if (i.isChatInputCommand()) await onCommand(i);
     else if (i.isButton()) await onButton(i);
     else if (i.isStringSelectMenu()) await onSelect(i);
@@ -259,11 +293,25 @@ client.on('interactionCreate', async i => {
   }
 });
 
-client.once('ready', async () => {
+// ---------- التشغيل ----------
+// الداشبورد يشتغل دايماً، والبوت يتحكم فيه من الداشبورد (توكن، تشغيل، إيقاف). التجهيز الثقيل يتم مرة وحدة فقط.
+let booted = false;
+botctl.attach(client, async () => {
   console.log(`✅ ${client.user.tag}`);
-  await new REST().setToken(process.env.DISCORD_TOKEN)
-    .put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
-  for (const m of ['logs', 'welcome', 'levels', 'mod']) require('./' + m).init(client);
-  require('./dashboard')(client, { sendPanel, ticketPanel: id => tickets.sendPanel(client, id), welcomePreview: require('./welcome').preview });
+  const c = botctl.creds();
+  try { await new REST().setToken(c.token).put(Routes.applicationGuildCommands(client.user.id, c.guildId), { body: commands }); }
+  catch (e) { console.error('❌ تسجيل الأوامر فشل (تأكد أن البوت داخل السيرفر وايدي السيرفر صحيح):', e.message); throw e; }
+  if (booted) return;
+  booted = true;
+  for (const m of ['logs', 'welcome', 'levels', 'mod', 'protect', 'extras', 'shop', 'community', 'backup']) require('./' + m).init(client);
 });
-client.login(process.env.DISCORD_TOKEN);
+require('./dashboard')(client, {
+  botctl,
+  sendPanel: ctx.sendPanel, ticketPanel: ctx.ticketPanel, welcomePreview: require('./welcome').preview,
+  sendInfo: async (k, id) => { const ch = await client.channels.fetch(id); return k === 'verify' ? protect.sendVerify(ch) : require('./info').sendInfo(ch, k); },
+  setupServer: () => require('./setup').setupServer(client.guilds.cache.get(process.env.GUILD_ID), ctx),
+  onStatus: (o) => shop.onStatus(client.guilds.cache.get(process.env.GUILD_ID), o),
+});
+require('./hosted/manager').init({ notify: (uid, txt) => client.users.fetch(uid).then((u) => u.send(txt)), mainToken: () => botctl.creds().token });
+if (botctl.canAutostart()) botctl.start().catch((e) => console.error('❌ تعذر تشغيل البوت:', e.message));
+else console.log('⚠️ البوت متوقف. افتح الداشبورد (http://localhost:' + (process.env.PORT || 3000) + ') ← 🤖 البوت، وحط التوكن وايدي السيرفر ثم اضغط تشغيل.');
