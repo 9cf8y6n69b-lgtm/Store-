@@ -14,6 +14,8 @@ const shop = require('./shop');
 const community = require('./community');
 const backup = require('./backup');
 const bl = require('./blacklist');
+const sales = require('./hosted/sales');
+const lineSys = require('./line');
 const botctl = require('./botctl');
 backup.autoRestoreOnBoot(); // لو فيه ملف نسخة داخل data/restore يتم استرجاعه قبل التشغيل
 process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
@@ -95,6 +97,7 @@ async function sendPanel(channelId) {
   return ch.send({ embeds: [e], files, components: [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('order').setLabel('اطلب بوت').setEmoji('🛒').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('prices').setLabel('الأسعار').setEmoji('💰').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('packages').setLabel('الباقات').setEmoji('📦').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('myorders').setLabel('طلباتي').setEmoji('📦').setStyle(ButtonStyle.Secondary),
   )] });
 }
@@ -115,10 +118,10 @@ const commands = [
   new SlashCommandBuilder().setName('my-orders').setDescription('طلباتي'),
   new SlashCommandBuilder().setName('order').setDescription('معلومات طلب (ستاف)').addIntegerOption(o => o.setName('id').setDescription('رقم الطلب').setRequired(true)),
   new SlashCommandBuilder().setName('top-staff').setDescription('أفضل الستاف بالنقاط'),
-].map(c => c.toJSON()).concat(extras.commands, shop.commands, community.commands, backup.commands, botctl.commands);
+].map(c => c.toJSON()).concat(extras.commands, shop.commands, community.commands, backup.commands, botctl.commands, sales.commands, lineSys.commands);
 
 async function onCommand(i) {
-  if (await extras.onCommand(i, ctx) || await shop.onCommand(i) || await community.onCommand(i) || await backup.onCommand(i) || await botctl.onCommand(i)) return;
+  if (await extras.onCommand(i, ctx) || await shop.onCommand(i) || await community.onCommand(i) || await backup.onCommand(i) || await botctl.onCommand(i) || await sales.onCommand(i) || await lineSys.onCommand(i)) return;
   if (i.commandName === 'prices') return i.reply(pricesReply());
   if (i.commandName === 'store-panel') {
     const ch = i.options.getChannel('channel') || i.channel;
@@ -153,6 +156,7 @@ function myOrders(i) {
 async function onButton(i) {
   const [act, id, extra] = i.customId.split(':');
   if (act === 'prices') return i.reply(pricesReply());
+  if (act === 'packages') return i.reply({ embeds: [sales.packagesEmbed()], flags: EPH });
   if (act === 'myorders') return myOrders(i);
   if (act === 'order') {
     if (bl.get(i.user.id)) return i.reply({ content: bl.DENY, flags: EPH });
@@ -281,7 +285,7 @@ client.on('interactionCreate', async i => {
   try {
     if ((i.isButton() || i.isStringSelectMenu() || i.isModalSubmit()) && i.customId.startsWith('tk_') && await tickets.handle(i)) return;
     if ((i.isButton() || i.isModalSubmit()) && i.customId.startsWith('vf_') && await protect.handle(i)) return;
-    if (!i.isChatInputCommand() && !i.isAutocomplete?.() && (await shop.handle(i) || await community.handle(i) || await backup.handle(i))) return;
+    if (!i.isChatInputCommand() && !i.isAutocomplete?.() && (await shop.handle(i) || await community.handle(i) || await backup.handle(i) || await sales.handle(i))) return;
     if (i.isChatInputCommand()) await onCommand(i);
     else if (i.isButton()) await onButton(i);
     else if (i.isStringSelectMenu()) await onSelect(i);
@@ -303,7 +307,7 @@ botctl.attach(client, async () => {
   catch (e) { console.error('❌ تسجيل الأوامر فشل (تأكد أن البوت داخل السيرفر وايدي السيرفر صحيح):', e.message); throw e; }
   if (booted) return;
   booted = true;
-  for (const m of ['logs', 'welcome', 'levels', 'mod', 'protect', 'extras', 'shop', 'community', 'backup']) require('./' + m).init(client);
+  for (const m of ['logs', 'welcome', 'levels', 'mod', 'protect', 'extras', 'shop', 'community', 'backup', 'line', 'hosted/sales']) require('./' + m).init(client);
 });
 require('./dashboard')(client, {
   botctl,
@@ -312,6 +316,7 @@ require('./dashboard')(client, {
   setupServer: () => require('./setup').setupServer(client.guilds.cache.get(process.env.GUILD_ID), ctx),
   onStatus: (o) => shop.onStatus(client.guilds.cache.get(process.env.GUILD_ID), o),
 });
-require('./hosted/manager').init({ notify: (uid, txt) => client.users.fetch(uid).then((u) => u.send(txt)), mainToken: () => botctl.creds().token });
+require('./hosted/manager').init({ ...sales.hooks, notify: (uid, txt) => client.users.fetch(uid).then((u) => u.send(txt)), mainToken: () => botctl.creds().token });
 if (botctl.canAutostart()) botctl.start().catch((e) => console.error('❌ تعذر تشغيل البوت:', e.message));
 else console.log('⚠️ البوت متوقف. افتح الداشبورد (http://localhost:' + (process.env.PORT || 3000) + ') ← 🤖 البوت، وحط التوكن وايدي السيرفر ثم اضغط تشغيل.');
+// تم صنع البوت بمتجر نوفا ستور • يوزر الاونر: .5yb.
