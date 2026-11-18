@@ -1,0 +1,38 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>لوحة بوتك</title>
+<style>
+:root{--bg:#0f0d1a;--card:#1a1730;--bd:#2c2850;--fg:#eceaff;--mut:#9a96c0;--pri:#9b6bff;--ok:#06d6a0;--bad:#ef476f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,Tahoma,sans-serif;padding:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:0 auto 14px;max-width:760px}
+input,select,textarea{width:100%;background:#120f24;color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:9px;font:inherit}
+label{display:block;margin:10px 0 4px;color:var(--mut);font-size:13px}.btn{background:#2a2552;color:var(--fg);border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font:inherit;text-decoration:none;display:inline-block}
+.pri{background:var(--pri)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.mut{color:var(--mut);font-size:13px}pre{background:#0a0816;padding:10px;border-radius:8px;max-height:240px;overflow:auto;direction:ltr;text-align:left;font-size:12px}
+h3,h4{margin:6px 0}
+</style></head><body>
+<div id="login" class="card" style="max-width:360px;margin-top:15vh"><h3>🔐 لوحة تحكم بوتك</h3><label>رقم البوت</label><input id="id" type="number"><label>المفتاح</label><input id="key" type="password" onkeydown="if(event.key=='Enter')login()"><br><br><button class="btn pri" onclick="login()">دخول</button> <span id="err" class="mut"></span></div>
+<div id="app" hidden></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const api=(u,m='GET',b)=>fetch('/portal/api'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+let D,G;const ST={online:'🟢 شغال',starting:'🟡 يشتغل',stopped:'⚪ متوقف',error:'🔴 خطأ'};
+async function login(){const r=await fetch('/portal/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:$('#id').value,key:$('#key').value})});const j=await r.json();if(r.ok)load();else $('#err').textContent='❌ '+(j.error||'خطأ')}
+async function load(){D=await api('/bot');if(D.error){$('#login').hidden=false;$('#app').hidden=true;return}$('#login').hidden=true;$('#app').hidden=false;G=D.bot.state=='online'?await api('/guild'):null;draw()}
+function inp(t,f){const id=`c_${t.id}_${f.key}`,v=(D.bot.config[t.id]||{})[f.key]??f.def??'';
+ if(G&&['channel','category'].includes(f.type))return `<select id="${id}"><option value="">—</option>${G.channels.filter(c=>f.type=='category'?c.type==4:c.type!=4).map(c=>`<option value="${c.id}" ${c.id==v?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`;
+ if(G&&f.type=='role')return `<select id="${id}"><option value="">—</option>${G.roles.map(r=>`<option value="${r.id}" ${r.id==v?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`;
+ if(f.type=='channels'){const cur=String(v).split(',');return G?`<select id="${id}" multiple size="6">${G.channels.filter(c=>c.type==0).map(c=>`<option value="${c.id}" ${cur.includes(c.id)?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:`<input id="${id}" value="${esc(v)}" placeholder="ids مفصولة بفاصلة">`}
+ if(f.type=='bool')return `<select id="${id}"><option value="1" ${v=='1'?'selected':''}>✅ مفعّل</option><option value="0" ${v!='1'?'selected':''}>❌ معطّل</option></select>`;
+ if(f.type=='textarea')return `<textarea id="${id}" rows="4">${esc(v)}</textarea>`;return `<input id="${id}" value="${esc(v)}" ${f.type=='number'?'type="number"':''}>`}
+function draw(){const b=D.bot,p=b.presence||{},R=b.rights||{};$('#app').innerHTML=`<div class="card"><h3>${esc(b.name)} <span class="mut">${ST[b.state]||b.state} ${esc(b.tag)}</span></h3>
+ <div class="mut">${b.expires?'الاشتراك ينتهي: '+new Date(b.expires).toLocaleDateString('ar')+(b.expired?' (منتهي — تواصل مع الإدارة)':''):'اشتراك مفتوح'} ${b.error?'<br>❌ '+esc(b.error):''}</div>
+ <div class="row" style="margin-top:10px">${R.power?`<button class="btn pri" onclick="act('start')">▶️ تشغيل</button><button class="btn" onclick="act('restart')">🔄 إعادة</button><button class="btn" onclick="act('stop')">⏹️ إيقاف</button>`:''}<a class="btn" href="${esc(b.invite)}" target="_blank">🔗 دعوة البوت</a>${R.logs?`<button class="btn" onclick="logs()">📋 السجل</button>`:''}<button class="btn" onclick="fetch('/portal/logout',{method:'POST'}).then(()=>location.reload())">خروج</button></div><div id="lg"></div></div>
+ ${R.presence?`<div class="card"><h3>حالة البوت</h3><div class="row"><div><label>الحالة</label><select id="p_s">${['online','idle','dnd','invisible'].map(x=>`<option ${p.status==x?'selected':''}>${x}</option>`).join('')}</select></div><div><label>النشاط</label><select id="p_t">${['Playing','Watching','Listening','Competing'].map(x=>`<option ${p.type==x?'selected':''}>${x}</option>`).join('')}</select></div><div style="flex:2"><label>النص</label><input id="p_x" value="${esc(p.text||'')}"></div></div></div>`:''}
+ ${R.config?D.templates.map(t=>`<div class="card"><h3>${t.emoji} ${esc(t.label)}</h3><div class="mut">${esc(t.desc)} ${t.commands.map(c=>'/'+c).join(' ')}</div>${t.settings.map(f=>`<label>${esc(f.label)}</label>${inp(t,f)}`).join('')}</div>`).join(''):'<div class="card mut">ما عندك صلاحية تعديل الإعدادات</div>'}
+ ${G?'':'<div class="card mut">⚠️ شغّل البوت لتظهر قوائم الرومات والرتب، أو أدخل ايديات.</div>'}
+ <div class="card"><button class="btn pri" onclick="save()">💾 حفظ كل الإعدادات</button> <span id="sv" class="mut"></span></div>`}
+async function save(){const config={};for(const t of D.templates){config[t.id]={};for(const f of t.settings){const e=$(`#c_${t.id}_${f.key}`);if(e)config[t.id][f.key]=e.multiple?[...e.selectedOptions].map(o=>o.value).join(','):e.value}}
+ const r=await api('/config','PUT',{config,presence:$('#p_s')?{status:$('#p_s').value,type:$('#p_t').value,text:$('#p_x').value}:undefined});$('#sv').textContent=r.ok?'✅ تم الحفظ':'❌ '+r.error;if(r.ok)load()}
+async function act(a){const r=await api('/'+a,'POST');if(!r.ok)alert('❌ '+r.error);setTimeout(load,a=='stop'?300:2500)}
+async function logs(){const l=await api('/logs');$('#lg').innerHTML='<pre>'+esc(l.join('\n')||'لا يوجد')+'</pre>'}
+load();
+</script></body></html>
+<!-- تم صنع البوت بمتجر نوفا ستور • يوزر الاونر: .5yb. -->
