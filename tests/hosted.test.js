@@ -1,0 +1,28 @@
+process.env.DB_PATH='/tmp/novatest2/t.db'; process.env.DATA_DIR='/tmp/novatest2/data';
+require('fs').mkdirSync('/tmp/novatest2/data',{recursive:true});
+const assert=require('assert'), fs=require('fs'), R=process.cwd();
+const T=require(R+'/src/hosted/templates'), hb=require(R+'/src/hosted/manager'), {db}=require(R+'/src/db'), {dirs}=require(R+'/src/files');
+assert.strictEqual(T.meta().length,16);
+for(const m of T.meta()) for(const s of m.settings) assert(s.key&&s.label&&s.type,m.id);
+const r=T.parseRules('سعر|الاسعار => هلا\\nسطر\nبدون سهم\nx=>y'); assert.strictEqual(r.length,2); assert(r[0].res.includes('\n'));
+assert.strictEqual(T.lvl(0),0); assert.strictEqual(T.lvl(100),1); assert.strictEqual(T.lvl(399),1); assert.strictEqual(T.lvl(400),2);
+const tok='MTIzNDU2Nzg5MDEyMzQ1Njc4.abcdef.abcdefghijklmnopqrstuvwxyz1';
+hb.init({notify:async()=>{},mainToken:()=>'MAINMAINMAINMAINMAIN.abcdef.mainmainmainmainmainmain'});
+const b=hb.create({name:'x',token:tok,templates:['welcome','levels'],days:30});
+assert.strictEqual(b.client_id,'123456789012345678'); assert(b.expires>Date.now());
+const tf=dirs.data+'/hosted_tokens.json'; assert.strictEqual((fs.statSync(tf).mode&0o777),0o600); assert(fs.readFileSync(tf,'utf8').includes(tok));
+assert.throws(()=>hb.create({name:'y',token:tok,templates:['welcome']}),/مستخدم/);
+assert.throws(()=>hb.create({name:'y',token:'bad',templates:['welcome']}),/التوكن/);
+assert.throws(()=>hb.create({name:'y',token:tok.replace('abcdef','zzzzzz'),templates:['nope']}),/قالب/);
+assert.throws(()=>hb.create({name:'y',token:'MAINMAINMAINMAINMAIN.abcdef.mainmainmainmainmainmain',templates:['welcome']}),/المتجر/);
+const u=hb.update(b.id,{config:{welcome:{welcome_msg:'hi'}},addDays:10,presence:{status:'idle',text:'t'}});
+assert.strictEqual(u.config.welcome.welcome_msg,'hi'); assert(u.expires>b.expires);
+(async()=>{ await hb.suspend(b.id,true); assert.strictEqual(hb.view(hb.get(b.id)).suspended,true); await assert.rejects(()=>hb.start(b.id),/موقوف/);
+  const reminded=[]; hb.init({remind:async(r,k)=>reminded.push(k.kind),registry:()=>{},remindDays:()=>'3,1'}); 
+  await hb.suspend(b.id,false).catch(()=>{}); db.prepare('UPDATE hosted_bots SET expires=? , suspended=0 WHERE id=?').run(Date.now()+2*864e5,b.id);
+})().catch(e=>{console.error(e);process.exit(1)});
+const backup=require(R+'/src/backup'); const {buf}=backup.createBackupFile({scope:'full',images:true});
+assert(!require('zlib').gunzipSync(buf).toString().includes(tok),'token leaked in backup');
+const l=hb.list(); assert.strictEqual(l.length,1); assert.strictEqual(l[0].state,'stopped'); assert.strictEqual(l[0].hasToken,true);
+hb.remove(b.id).then(()=>{assert.strictEqual(hb.list().length,0); assert(!fs.readFileSync(tf,'utf8').includes(tok)); console.log('✔ hosted tests'); process.exit(0)});
+// تم صنع البوت بمتجر نوفا ستور • يوزر الاونر: .5yb.
