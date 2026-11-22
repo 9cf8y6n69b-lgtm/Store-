@@ -152,7 +152,7 @@ async function start(id) {
   });
   client.on('error', (e) => rt.log(`client: ${e.message}`));
   client.on('guildCreate', () => registerCommands(rt, row, tpls));
-  client.once('ready', async () => { rt.state = 'online'; rt.startedAt = Date.now(); rt.error = ''; rt.log(`✅ ${client.user.tag}`); applyPresence(id); await registerCommands(rt, row, tpls); });
+  client.once('clientReady', async () => { rt.state = 'online'; rt.startedAt = Date.now(); rt.error = ''; rt.log(`✅ ${client.user.tag}`); applyPresence(id); await registerCommands(rt, row, tpls); });
   try { await client.login(token); }
   catch (e) { rt.state = 'error'; rt.error = explain(e); rt.log(`❌ ${rt.error}`); await teardown(id, true); throw new Error(rt.error); }
 }
