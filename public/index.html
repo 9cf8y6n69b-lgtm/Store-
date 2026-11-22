@@ -1,283 +1,458 @@
-<!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nova Store Dashboard</title>
+<title>NOVA STORE • لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#120a24;--card:#1d1238;--line:#6f4bd8;--pri:#9b6bff;--tx:#f1eaff;--mut:#b9a6e8}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,Tahoma,sans-serif;background:radial-gradient(circle at top,#2a1654,var(--bg));color:var(--tx);min-height:100vh}
-header{padding:16px;text-align:center;font-size:22px;font-weight:800}
-nav{display:flex;gap:8px;padding:0 12px 12px;justify-content:center;flex-wrap:wrap}
-nav button,.btn{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer;font:inherit}
-nav button.on,.btn.pri{background:var(--pri);border-color:var(--pri);font-weight:700}.btn.del{border-color:#ef476f;color:#ef476f}
-main{max-width:1000px;margin:auto;padding:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
-.stat b{display:block;font-size:28px;color:var(--pri)}
-input,select,textarea{width:100%;background:#120a24;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit}
-input[type=checkbox]{width:auto}select[multiple]{min-height:110px}
-label{display:block;margin:10px 0 4px;color:var(--mut);font-size:14px}
-table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid #3a2a68;text-align:right}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>*{flex:1;min-width:110px}.tbl{overflow-x:auto}
-img.pv{max-width:100%;border-radius:12px;margin-top:8px}.mut{color:var(--mut);font-size:13px}
-</style></head><body>
-<div id="login" class="card" style="max-width:340px;margin:20vh auto">
- <h3>🔐 دخول الداشبورد</h3><input id="us" placeholder="اسم المستخدم (فاضي = المالك)" autocomplete="username"><br><br><input id="pw" type="password" placeholder="الباسورد" onkeydown="if(event.key=='Enter')login()">
- <br><br><input id="cd" placeholder="رمز التحقق 2FA (لو مفعّل)" inputmode="numeric" autocomplete="one-time-code"><br><br><button class="btn pri" onclick="login()">دخول</button> <span id="err"></span></div>
-<div id="app" hidden><header>🌌 Nova Store</header><nav id="nav"></nav><main id="main"></main></div>
-<script>
-const $=s=>document.querySelector(s);
-const api=(u,m='GET',b)=>fetch('/api'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
-const CATS={basic:'🟢 بسيطة',standard:'🔵 متوسطة',premium:'🟣 متقدمة'};
-const STAT={pending:'⏳ بانتظار الدفع',paid:'💳 تم الدفع',working:'🛠️ قيد التنفيذ',delivered:'✅ تم التسليم',cancelled:'❌ ملغي'};
-const TABS={health:'🩺 فحص النظام',sales:'🛒 المبيعات والباقات',line:'➖ الخط التلقائي',audit:'🧾 سجل النشاط',security:'🔐 أماني (2FA)',hosted:'🧩 البوتات المستضافة',users:'👥 حسابات الداشبورد',bot:'🔌 تشغيل البوت',home:'📊 الرئيسية',reports:'📈 التقارير',products:'🤖 المنتجات',orders:'🧾 الطلبات',orders_cfg:'🧾 إعدادات الطلبات',blacklist:'🚫 القائمة السوداء',coupons:'🎟️ الكوبونات',giveaways:'🎁 القرعات',suggestions:'💡 الاقتراحات',autoreply:'💬 الردود التلقائية',rolepanels:'🏷️ رتب الأزرار',announce:'📣 الإعلانات',server:'🧩 أنظمة السيرفر',content:'📝 القوانين والسياسات',images:'🖼️ الصور',backup:'💾 النسخ الاحتياطي',welcome:'👋 الترحيب',tickets:'🎫 التذاكر',logs:'📜 اللوقات',commands:'🔨 الأوامر',levels:'⭐ المستويات',mod:'⚠️ التحذيرات',protect:'🛡️ الحماية',setup:'🏗️ تجهيز السيرفر',store:'🛒 إعدادات المتجر',general:'⚙️ عام',panels:'📢 البانلات'};
-let guild={roles:[],channels:[]},schema=[],cfg={},me={role:'owner'};
-const STAFF_TABS=['security','home','orders','blacklist','giveaways','suggestions','reports','mod'],OWNER_ONLY=['bot','backup','users','hosted','audit'];
-const tabOk=k=>me.role=='owner'||(me.role=='admin'?!OWNER_ONLY.includes(k):STAFF_TABS.includes(k));
-const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-async function login(){const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:$('#us').value,password:$('#pw').value,code:$('#cd').value})});
- if(r.ok){$('#login').hidden=true;$('#app').hidden=false;me=await api('/me');guild=await api('/guild');schema=await api('/schema');
- $('#nav').innerHTML=Object.entries(TABS).filter(([k])=>tabOk(k)).map(([k,v])=>`<button id="t-${k}" onclick="go('${k}')">${v}</button>`).join('');if(me.role=='owner')api('/bot').then(b=>go(b.state=='online'?'home':'bot'));else go('home')}else{const j=await r.json().catch(()=>({}));$('#err').textContent=j.need2fa&&!$('#cd').value?'🔐 اكتب رمز التحقق':'❌ '+(j.error||'خطأ')}}
-async function go(t){clearInterval(window._poll);document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));$('#t-'+t).classList.add('on');$('#main').innerHTML='...';cfg=await api('/settings');await V[t]()}
-const opts=(list,cur)=>`<option value="">— غير محدد —</option>${list.map(x=>`<option value="${x.id}" ${x.id==cur?'selected':''}>${esc(x.name)}</option>`).join('')}`;
-const sel=(id,list,cur)=>`<select id="${id}">${opts(list,cur)}</select>`;
-const chans=()=>guild.channels.filter(c=>c.type==0),cates=()=>guild.channels.filter(c=>c.type==4);
-function field(f){const v=cfg[f.key]??'',id='s_'+f.key;
- switch(f.type){case 'role':return sel(id,guild.roles,v);case 'channel':return sel(id,chans(),v);case 'category':return sel(id,cates(),v);
- case 'roles':{const cur=v.split(',');return `<select id="${id}" multiple>${guild.roles.map(r=>`<option value="${r.id}" ${cur.includes(r.id)?'selected':''}>${esc(r.name)}</option>`).join('')}</select><div class="mut">اضغط مطوّل/Ctrl لاختيار أكثر من رتبة</div>`}
- case 'channels':{const cur=v.split(',');return `<select id="${id}" multiple size="6">${chans().map(r=>`<option value="${r.id}" ${cur.includes(r.id)?'selected':''}>${esc(r.name)}</option>`).join('')}</select><div class="mut">Ctrl/مطوّل لاختيار أكثر من روم</div>`}
- case 'bool':return `<select id="${id}"><option value="1" ${v=='1'?'selected':''}>✅ مفعّل</option><option value="0" ${v!='1'?'selected':''}>❌ معطّل</option></select>`;
- case 'textarea':case 'json':return `<textarea id="${id}" rows="${f.type=='json'?5:3}">${esc(v)}</textarea>`;
- case 'number':return `<input id="${id}" type="number" step="any" value="${esc(v)}">`;
- default:return `<input id="${id}" value="${esc(v)}">`}}
-const form=(group,title)=>`<div class="card"><h3>${title}</h3>${schema.filter(f=>f.group==group).map(f=>`<label>${f.label}</label>${field(f)}`).join('')}<br><button class="btn pri" onclick="saveS('${group}')">💾 حفظ</button></div>`;
-const V={
-async home(){const s=await api('/stats');$('#main').innerHTML=`<div class="grid">
- ${[['orders','كل الطلبات'],['open','طلبات مفتوحة'],['delivered','مسلّمة'],['tickets','تذاكر مفتوحة'],['members','الأعضاء'],['warns','تحذيرات']].map(([k,l])=>`<div class="card stat"><b>${s[k]}</b>${l}</div>`).join('')}
- <div class="card stat"><b>${s.avgStars}⭐</b>متوسط التقييم</div></div>
- <div class="card"><h3>🏆 أفضل الستاف</h3><div class="tbl"><table><tr><th>الستاف</th><th>النقاط</th><th>استلم</th><th>سلّم</th></tr>
- ${s.topStaff.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.points}</td><td>${r.claimed}</td><td>${r.delivered}</td></tr>`).join('')}</table></div></div>`},
-async products(){const p=await api('/products');$('#main').innerHTML=`<div class="card"><h3>➕ منتج جديد</h3><div class="row">
- <div><label>القسم</label><select id="nc">${Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
- <div><label>الاسم</label><input id="nn"></div><div><label>الأشهر</label><input id="nm" type="number" step="0.5"></div>
- <div><label>إيموجي</label><input id="ne" value="🤖"></div><button class="btn pri" onclick="addP()">إضافة</button></div></div>
- <div class="card tbl"><table><tr><th>القسم</th><th>الاسم</th><th>أشهر</th><th>إيموجي</th><th>فعّال</th><th></th></tr>
- ${p.map(x=>`<tr><td><select id="c${x.id}">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k==x.category?'selected':''}>${v}</option>`).join('')}</select></td>
- <td><input id="n${x.id}" value="${esc(x.name)}"></td><td><input id="m${x.id}" type="number" step="0.5" value="${x.months}"></td>
- <td><input id="e${x.id}" value="${x.emoji}" style="width:60px"></td><td><input id="a${x.id}" type="checkbox" ${x.active?'checked':''}></td>
- <td><button class="btn pri" onclick="saveP(${x.id})">حفظ</button> <button class="btn del" onclick="delP(${x.id})">حذف</button></td></tr>`).join('')}</table></div>`},
-async orders(){const o=await api('/orders');$('#main').innerHTML=`<div class="card tbl"><table><tr><th>#</th><th>العميل</th><th>الدفع</th><th>الحالة</th><th>المستلم</th><th>الضمان</th><th>التاريخ</th></tr>
- ${o.map(x=>`<tr><td>${x.id}</td><td>${esc(x.user_name)}</td><td>${x.pay}</td><td><select onchange="setO(${x.id},this.value)">${Object.entries(STAT).map(([k,v])=>`<option value="${k}" ${k==x.status?'selected':''}>${v}</option>`).join('')}</select></td><td>${esc(x.claimed_name)||'-'}</td><td>${x.warranty_until?(x.warranty_until>Date.now()?'🛡️ حتى '+new Date(x.warranty_until).toLocaleDateString('ar'):'منتهي'):'-'}</td><td>${new Date(x.created).toLocaleString('ar')}</td></tr>`).join('')}</table></div>`},
-async coupons(){const c=await api('/coupons');$('#main').innerHTML=`<div class="card"><h3>➕ كوبون</h3><div class="row"><div><label>الكود</label><input id="cc"></div>
- <div><label>الخصم %</label><input id="cp" type="number"></div><div><label>أقصى استخدام (0 = بلا حد)</label><input id="cm" type="number" value="0"></div>
- <button class="btn pri" onclick="addC()">إضافة</button></div></div><div class="card tbl"><table><tr><th>الكود</th><th>%</th><th>الاستخدام</th><th></th></tr>
- ${c.map(x=>`<tr><td>${esc(x.code)}</td><td>${x.percent}</td><td>${x.uses}/${x.max_uses||'∞'}</td><td><button class="btn del" onclick="delC('${esc(x.code)}')">حذف</button></td></tr>`).join('')}</table></div>`},
-async welcome(){$('#main').innerHTML=form('welcome','👋 إعدادات الترحيب')+`<div class="card"><h3>👀 معاينة</h3><div class="row"><div><label>الروم</label>${sel('wch',chans())}</div><div><label>ID العضو للمعاينة (ايديك)</label><input id="wu"></div><button class="btn pri" onclick="wp()">أرسل معاينة</button></div><div class="mut">احفظ الإعدادات أولاً ثم أرسل المعاينة.</div><img class="pv" src="/assets/bg.png" style="max-width:260px"></div>`},
-async tickets(){const c=await api('/tkcats');$('#main').innerHTML=form('tickets','🎫 إعدادات التذاكر')+`<div class="card"><h3>📂 أنواع التذاكر</h3><div class="row"><div><label>الاسم</label><input id="tn"></div><div><label>إيموجي</label><input id="te" value="🎫"></div><div><label>الوصف</label><input id="td"></div><button class="btn pri" onclick="addT()">إضافة</button></div>
- <div class="tbl"><table>${c.map(x=>`<tr><td><input id="tn${x.id}" value="${esc(x.name)}"></td><td><input id="te${x.id}" value="${x.emoji}" style="width:60px"></td><td><input id="td${x.id}" value="${esc(x.description)}"></td><td><button class="btn pri" onclick="saveT(${x.id})">حفظ</button> <button class="btn del" onclick="delT(${x.id})">حذف</button></td></tr>`).join('')}</table></div></div>
- <div class="card"><div class="mut">بعد التعديل أرسل بانل التذاكر من تبويب 📢 البانلات.</div></div>`},
-async logs(){$('#main').innerHTML=form('logs','📜 اللوقات — اختر روم لكل نوع')},
-async commands(){const c=await api('/cmds');$('#main').innerHTML=`<div class="card"><h3>🔨 أوامر الإدارة (بادئة: ${esc(cfg.prefix)})</h3><div class="mut">الاختصارات مفصولة بفاصلة. الرتبة: اللي تقدر تستخدم الأمر (فاضي = صلاحية ديسكورد الافتراضية).</div>
- <div class="tbl"><table><tr><th>الأمر</th><th>الاختصارات</th><th>الرتبة</th><th>مفعّل</th><th></th></tr>
- ${c.map(x=>`<tr><td><b>${x.name}</b></td><td><input id="al${x.name}" value="${esc(x.aliases)}"></td><td>${sel('rl'+x.name,guild.roles,x.role)}</td><td><input id="en${x.name}" type="checkbox" ${x.enabled?'checked':''}></td><td><button class="btn pri" onclick="saveCmd('${x.name}')">حفظ</button></td></tr>`).join('')}</table></div></div>`},
-async levels(){const r=await api('/levelroles');$('#main').innerHTML=form('levels','⭐ إعدادات المستويات')+`<div class="card"><h3>🏷️ رتب المستويات</h3><div class="row"><div><label>الفل</label><input id="lv" type="number"></div><div><label>الرتبة</label>${sel('lr',guild.roles)}</div><div><label>النوع</label><select id="lk"><option value="member">أعضاء</option><option value="staff">ستاف</option></select></div><button class="btn pri" onclick="addL()">إضافة</button></div>
- <div class="tbl"><table>${r.map(x=>`<tr><td>${x.kind=='staff'?'ستاف':'أعضاء'}</td><td>فل ${x.level}</td><td>${esc((guild.roles.find(y=>y.id==x.role_id)||{}).name||x.role_id)}</td><td><button class="btn del" onclick="delL(${x.id})">حذف</button></td></tr>`).join('')}</table></div></div>`},
-async mod(){const w=await api('/warns');$('#main').innerHTML=`<div class="card tbl"><h3>⚠️ آخر التحذيرات</h3><table><tr><th>#</th><th>العضو</th><th>الإداري</th><th>السبب</th><th></th></tr>
- ${w.map(x=>`<tr><td>${x.id}</td><td>${esc(x.user_name)}</td><td>${esc(x.mod_name)}</td><td>${esc(x.reason)}</td><td><button class="btn del" onclick="delW(${x.id})">حذف</button></td></tr>`).join('')}</table></div>`},
-async store(){$('#main').innerHTML=form('store','🛒 إعدادات المتجر')},
-async general(){$('#main').innerHTML=form('general','⚙️ إعدادات عامة')},
-async protect(){$('#main').innerHTML=form('protect','🛡️ إعدادات الحماية')},
-async bot(){
- const b=await api('/bot'),inv=b.clientId?`https://discord.com/oauth2/authorize?client_id=${b.clientId}&permissions=8&scope=bot%20applications.commands`:'';
- $('#main').innerHTML=`<div class="card" id="botst"></div>
- <div class="card"><h3>🔑 بيانات الاتصال</h3>
- <div class="mut">التوكن يُحفظ على جهازك فقط (ملف data/credentials.json) ولا يدخل في النسخ الاحتياطية ولا يظهر هنا مرة ثانية.</div>
- <label>توكن البوت</label><input id="bt" type="password" autocomplete="off" placeholder="${b.hasToken?'محفوظ (••••'+esc(b.tokenTail)+') — اتركه فاضي للإبقاء عليه':'الصق توكن البوت'}">
- <div class="row"><div><label>ايدي السيرفر (Guild ID) *</label><input id="bg" value="${esc(b.guildId)}"></div><div><label>ايدي البوت (Client ID) — اختياري</label><input id="bc" value="${esc(b.clientId)}"></div></div>
- <label><input id="ba" type="checkbox" ${b.autostart?'checked':''}> تشغيل البوت تلقائياً كل ما أفتح التطبيق</label><br>
- <button class="btn" onclick="botSave(false)">💾 حفظ</button> <button class="btn pri" onclick="botSave(true)">💾 حفظ وتشغيل</button>
- ${inv?`<br><br><div class="mut">رابط دعوة البوت للسيرفر (صلاحية Administrator):</div><input readonly value="${esc(inv)}" onclick="this.select()">`:''}
- <div class="mut"><br>⚠️ فعّل من Discord Developer Portal ← Bot: <b>Server Members Intent</b> و <b>Message Content Intent</b>. وارفع رتبة البوت فوق كل الرتب.</div></div>
- <div class="card"><h3>🎭 حالة ونشاط البوت</h3><div class="row">
- <div><label>الحالة</label><select id="ps">${Object.entries({online:'🟢 متصل',idle:'🌙 خامل',dnd:'⛔ مشغول',invisible:'⚫ غير مرئي'}).map(([k,v])=>`<option value="${k}" ${k==b.presence.status?'selected':''}>${v}</option>`).join('')}</select></div>
- <div><label>نوع النشاط</label><select id="pt">${Object.entries({Playing:'يلعب',Watching:'يشاهد',Listening:'يستمع إلى',Competing:'يتنافس في',Custom:'حالة مخصصة'}).map(([k,v])=>`<option value="${k}" ${k==b.presence.type?'selected':''}>${v}</option>`).join('')}</select></div>
- <div style="flex:2"><label>نص النشاط (فاضي = بدون)</label><input id="px" value="${esc(b.presence.text)}"></div></div><br>
- <button class="btn pri" onclick="botPres()">تطبيق الحالة</button> <span class="mut">يمكنك أيضاً من ديسكورد: /bot-status</span></div>`;
- const draw=async()=>{const b=await api('/bot'),el=$('#botst');if(!el)return;const S={online:['🟢 شغّال','#06d6a0'],starting:['🟡 جاري التشغيل...','#ffd166'],stopped:['⚪ متوقف','#b9a6e8'],error:['🔴 خطأ','#ef476f']}[b.state]||['?','#fff'];
-  const up=b.uptime?Math.floor(b.uptime/6e4)+' دقيقة':'-';
-  el.innerHTML=`<h3>${b.avatar?`<img src="${esc(b.avatar)}" style="width:34px;height:34px;border-radius:50%;vertical-align:middle"> `:''}حالة التشغيل: <span style="color:${S[1]}">${S[0]}</span></h3>
-  ${b.tag?`<div>🤖 ${esc(b.tag)} • 📡 ${b.ping??'-'}ms • ⏱️ ${up} • 🌐 ${b.guilds} سيرفر</div>`:''}
-  ${b.state=='online'?(b.guildFound?`<div>✅ متصل بالسيرفر: <b>${esc(b.guildName)}</b> (${b.members} عضو)</div>`:`<div style="color:#ffd166">⚠️ البوت مو داخل السيرفر المحدد — ادعُه بالرابط بالأسفل</div>`):''}
-  ${b.lastError?`<div style="color:#ef476f">❌ ${esc(b.lastError)}</div>`:''}<br>
-  <button class="btn pri" onclick="botAct('start')" ${['online','starting'].includes(b.state)?'disabled':''}>▶️ تشغيل</button>
-  <button class="btn del" onclick="botAct('stop')" ${b.state=='stopped'?'disabled':''}>⏹️ إيقاف</button>
-  <button class="btn" onclick="botAct('restart')" ${b.state=='stopped'?'disabled':''}>🔄 إعادة تشغيل</button>`};
- await draw();window._poll=setInterval(draw,3000)},
-async reports(){$('#main').innerHTML=`<div class="card"><h3>📈 تقارير المبيعات والأرباح</h3><div class="row">
- <div><label>الفترة</label><select id="rp" onchange="loadReport()">${[['today','اليوم'],['yesterday','أمس'],['week','آخر 7 أيام'],['month','آخر 30 يوم'],['year','آخر سنة'],['all','الكل']].map(([k,v])=>`<option value="${k}" ${k=='month'?'selected':''}>${v}</option>`).join('')}</select></div>
- <div><label>أو من</label><input id="rf" type="date"></div><div><label>إلى</label><input id="rt" type="date"></div>
- <button class="btn pri" onclick="loadReport(true)">عرض</button><a class="btn" id="rcsv" href="#">⬇️ CSV</a></div>
- <div class="mut">لحساب الأرباح حدد «قيمة شهر نيترو» و«التكلفة» من 🧾 إعدادات الطلبات.</div></div><div id="rbody"></div>`;loadReport()},
-async orders_cfg(){$('#main').innerHTML=form('orders','🧾 إعدادات الطلبات: الفواتير، الضمان، الإغلاق التلقائي، الأرباح')},
-async server(){$('#main').innerHTML=form('server','🧩 إعدادات القرعات والاقتراحات والردود والإعلانات')},
-async blacklist(){const l=await api('/blacklist');$('#main').innerHTML=`<div class="card"><h3>🚫 القائمة السوداء للمحتالين</h3><div class="mut">المحتال ما يقدر يطلب ولا يفتح تذاكر ولا يشارك بالقرعات ولا يوثّق، ويتحظر لو رجع للسيرفر (حسب الإعدادات).</div>
- <div class="row"><div><label>ايدي العضو</label><input id="bl_id"></div><div style="flex:2"><label>السبب</label><input id="bl_r"></div><div><label><input id="bl_b" type="checkbox"> حظره الآن</label></div><button class="btn pri" onclick="addBL()">إضافة</button></div></div>
- <div class="card tbl"><table><tr><th>العضو</th><th>الايدي</th><th>السبب</th><th>التاريخ</th><th></th></tr>${l.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.user_id}</td><td>${esc(x.reason)}</td><td>${new Date(x.created).toLocaleDateString('ar')}</td><td><button class="btn del" onclick="delBL('${x.user_id}')">إزالة</button></td></tr>`).join('')}</table></div>`},
-async giveaways(){const g=await api('/giveaways');$('#main').innerHTML=`<div class="card"><h3>🎁 قرعة جديدة</h3><div class="row"><div style="flex:2"><label>الجائزة</label><input id="gp"></div><div><label>المدة (دقائق)</label><input id="gm" type="number" value="60"></div><div><label>الفائزين</label><input id="gw" type="number" value="1"></div></div>
- <div class="row"><div><label>الروم (فاضي = الافتراضي)</label>${sel('gc',chans())}</div><div><label>رتبة مطلوبة</label>${sel('gr',guild.roles)}</div><button class="btn pri" onclick="addG()">🎁 ابدأ</button></div>
- <div class="mut">الروم الافتراضي ورتبة المنشن من 🧩 أنظمة السيرفر. يمديك أيضاً /giveaway من ديسكورد.</div></div>
- <div class="card tbl"><table><tr><th>#</th><th>الجائزة</th><th>الحالة</th><th>المشاركون</th><th>الفائزون</th><th>تنتهي</th><th></th></tr>${g.map(x=>`<tr><td>${x.id}</td><td>${esc(x.prize)}</td><td>${x.status=='active'?'🟢 جارية':'⚪ منتهية'}</td><td>${x.entries}</td><td>${esc(x.winner_ids)||'-'}</td><td>${new Date(x.ends).toLocaleString('ar')}</td>
- <td>${x.status=='active'?`<button class="btn pri" onclick="gAct(${x.id},'end')">إنهاء</button>`:`<button class="btn" onclick="gAct(${x.id},'reroll')">إعادة سحب</button>`} ${x.status=='active'?`<button class="btn" onclick="gEdit(${x.id},'${esc(x.prize).replace(/'/g,'')}',${x.winners||1})">✏️</button>`:''} <button class="btn del" onclick="gDel(${x.id})">🗑️</button></td></tr>`).join('')}</table></div>`},
-async health(){const l=await api('/health');$('#main').innerHTML=`<div class="card"><h3>🩺 فحص النظام</h3>${l.map(x=>`<div style="padding:6px 0">${{ok:'✅',warn:'⚠️',bad:'❌'}[x.level]} ${esc(x.title)} ${x.fix?`<div class="mut">← ${esc(x.fix)}</div>`:''}</div>`).join('')}<br><button class="btn" onclick="go('health')">🔄 فحص مرة ثانية</button></div>`},
-async sales(){const P=await api('/packages');$('#main').innerHTML=form('sales','🛒 المبيعات والبوتات المستضافة')+`<div class="card"><h3>📦 الباقات</h3><div class="mut">كل باقة أفضل من اللي قبلها. أسعارها منتجات عادية (تعدّلها من 🤖 المنتجات). في تكت الطلب استخدم <b>/bot-plan</b> لتحديد الباقة واسم البوت وحقوق المشتري، و<b>/bots-panel</b> لتحديد روم السجل.</div>${P.map(p=>`<h4>${p.emoji} ${p.label} — ${p.days} يوم</h4><div class="mut">${p.perks.join(' • ')}</div>`).join('')}</div>`},
-async line(){$('#main').innerHTML=form('line','➖ نظام الخط التلقائي')+'<div class="card mut">أي رسالة أو صورة أو ملف يجي في الرومات المحددة، يرسل البوت الخط بعدها. صورة الخط من ⚙️ عام (line_image) أو من 🖼️ الصور. وأيضاً: <b>/line-rooms add|remove|list</b> من ديسكورد.</div>'},
-async audit(){const l=await api('/audit');$('#main').innerHTML=`<div class="card tbl"><h3>🧾 سجل نشاط الداشبورد</h3><table><tr><th>الوقت</th><th>الحساب</th><th>العملية</th><th>المسار</th><th>النتيجة</th><th>IP</th></tr>${l.map(x=>`<tr><td>${new Date(x.ts).toLocaleString('ar')}</td><td>${esc(x.user)} <span class="mut">${x.role}</span></td><td>${x.method}</td><td dir="ltr">${esc(x.url)}</td><td>${x.status<400?'✅':'❌'} ${x.status}</td><td dir="ltr">${esc(x.ip)}</td></tr>`).join('')}</table></div>`},
-async security(){const t=await api('/2fa');$('#main').innerHTML=`<div class="card"><h3>🔐 التحقق بخطوتين (2FA)</h3><div>الحالة: ${t.enabled?'✅ مفعّل':'❌ غير مفعّل'}</div><div class="mut">يشتغل مع Google Authenticator أو أي تطبيق TOTP.</div><br>
- ${t.enabled?`<div class="row"><input id="tf_c" placeholder="رمز التحقق الحالي" style="max-width:200px"><button class="btn del" onclick="tfOff()">تعطيل</button></div>`:`<button class="btn pri" onclick="tfSetup()">إعداد التحقق</button><div id="tf_box"></div>`}</div>`},
-async users(){const l=await api('/users');$('#main').innerHTML=`<div class="card"><h3>👥 إضافة حساب</h3><div class="row"><div><label>اسم المستخدم</label><input id="u_n"></div><div><label>الباسورد (8+)</label><input id="u_p" type="password"></div><div><label>الصلاحية</label><select id="u_r"><option value="staff">staff — طلبات وقرعات واقتراحات وتقارير</option><option value="admin">admin — كل شيء عدا البوت/النسخ/الحسابات</option></select></div><button class="btn pri" onclick="uAdd()">إضافة</button></div><div class="mut">نفس الاسم يعدّل الحساب. المالك يدخل بدون اسم مستخدم وبباسورد DASH_PASSWORD.</div></div>
- <div class="card tbl"><table><tr><th>الاسم</th><th>الصلاحية</th><th></th></tr>${l.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.role}</td><td><button class="btn del" onclick="uDel('${esc(x.name)}')">حذف</button></td></tr>`).join('')}</table></div>`},
-async hosted(){const d=await api('/hosted');window._hb=d;const T=d.templates,ST={online:'🟢 شغال',starting:'🟡 يشتغل',stopped:'⚪ متوقف',error:'🔴 خطأ'};
- $('#main').innerHTML=`<div class="card"><h3>➕ بوت جديد</h3><div class="mut">كل بوت يشتغل بتوكنه الخاص داخل نفس البرنامج. التوكن يتخزن في ملف خاص وما يدخل النسخ الاحتياطية.</div>
- <div class="row"><div><label>الاسم</label><input id="h_n" placeholder="بوت العميل أحمد"></div><div style="flex:2"><label>التوكن</label><input id="h_t" type="password" autocomplete="off"></div></div>
- <div class="row"><div><label>ايدي السيرفر (اختياري)</label><input id="h_g"></div><div><label>ايدي العميل (للتنبيهات)</label><input id="h_o"></div><div><label>رقم الطلب</label><input id="h_or" type="number"></div><div><label>أيام الاشتراك (0 = بلا حد)</label><input id="h_d" type="number" value="30"></div></div>
- <label>القوالب</label><div class="row">${T.map(t=>`<label style="display:flex;gap:4px;align-items:center;min-width:180px" title="${esc(t.desc)}"><input type="checkbox" class="h_tp" value="${t.id}" style="width:auto"> ${t.emoji} ${esc(t.label)}</label>`).join('')}</div>
- <button class="btn pri" onclick="hAdd()">إضافة وتشغيل</button></div>`+d.bots.map(b=>`<div class="card"><h3>${esc(b.name)} <span class="mut">#${b.id} • ${ST[b.state]||b.state} ${esc(b.tag)}</span></h3>
- <div class="mut">${b.package?({bronze:'🥉 برونزي',gold:'🥇 ذهبي',diamond:'💎 دايموند'}[b.package]||b.package)+' • ':''}${b.suspended?'⛔ موقوف • ':''}المشتري: ${b.owner_id?'<@'+esc(b.owner_id)+'>':'-'} • القوالب: ${b.templates.map(i=>(T.find(t=>t.id==i)||{}).label||i).join('، ')} • التوكن: ****${esc(b.tokenTail)} • ${b.expires?'ينتهي '+new Date(b.expires).toLocaleDateString('ar')+(b.expired?' (منتهي)':''):'بلا انتهاء'} ${b.error?'<br>❌ '+esc(b.error):''}</div>
- <div class="row" style="margin-top:8px"><button class="btn pri" onclick="hAct(${b.id},'start')">▶️ تشغيل</button><button class="btn" onclick="hAct(${b.id},'restart')">🔄</button><button class="btn" onclick="hAct(${b.id},'stop')">⏹️ إيقاف</button><button class="btn" onclick="hCfg(${b.id})">⚙️ إعدادات القوالب</button><button class="btn" onclick="hLogs(${b.id})">📋 سجل</button><button class="btn" onclick="hMore(${b.id})">✏️ تعديل</button><button class="btn" onclick="hKey(${b.id})">🔑 مفتاح اللوحة</button>${b.suspended?`<button class="btn pri" onclick="hSusp(${b.id},false)">✅ إلغاء الفصل</button>`:`<button class="btn del" onclick="hSusp(${b.id},true)">⛔ فصل</button>`}<a class="btn" href="${esc(b.invite)}" target="_blank">🔗 دعوة البوت</a><button class="btn del" onclick="hDel(${b.id})">🗑️</button></div><div id="hx${b.id}"></div></div>`).join('')},
-async suggestions(){const l=await api('/suggestions');$('#main').innerHTML=`<div class="card tbl"><h3>💡 الاقتراحات</h3><table><tr><th>#</th><th>العضو</th><th>الاقتراح</th><th>الحالة</th><th></th></tr>${l.map(x=>`<tr><td>${x.id}</td><td>${esc(x.name)}</td><td>${esc(x.text)}</td><td>${{pending:'⏳',accepted:'✅',rejected:'❌'}[x.status]} ${esc(x.staff_note)}</td>
- <td>${x.status=='pending'?`<button class="btn pri" onclick="sgAct(${x.id},'accepted')">قبول</button> <button class="btn del" onclick="sgAct(${x.id},'rejected')">رفض</button> <button class="btn" onclick="sgEdit(${x.id})">✏️</button>`:''} <button class="btn del" onclick="sgDel(${x.id})">🗑️</button></td></tr>`).join('')}</table></div>`},
-async autoreply(){const l=await api('/autoreplies');window._ar=l;$('#main').innerHTML=`<div class="card"><h3>💬 رد تلقائي</h3><input type="hidden" id="ar_id">
- <label>الكلمات اللي تشغّل الرد (افصل بينها بـ | )</label><input id="ar_t" placeholder="السعر|كم السعر|الاسعار">
- <label>الرد (متاح: {user} {name} {server} {channel})</label><textarea id="ar_r" rows="3"></textarea>
- <div class="row"><div><label>نوع المطابقة</label><select id="ar_m"><option value="contains">تحتوي الكلمة</option><option value="word">كلمة كاملة</option><option value="exact">تطابق تام</option><option value="starts">تبدأ بـ</option></select></div>
- <div><label>روم محدد (فاضي = كل الرومات)</label>${sel('ar_c',chans())}</div><div><label>كولداون (ثواني)</label><input id="ar_d" type="number" value="10"></div><div><label><input id="ar_p" type="checkbox" checked> رد على الرسالة</label></div></div><br>
- <button class="btn pri" onclick="saveAR()">💾 حفظ</button></div>
- <div class="card tbl"><table><tr><th>الكلمات</th><th>الرد</th><th>مطابقة</th><th>مفعّل</th><th></th></tr>${l.map(x=>`<tr><td>${esc(x.trigger)}</td><td>${esc(x.response).slice(0,80)}</td><td>${x.match}</td><td>${x.enabled?'✅':'❌'}</td><td><button class="btn" onclick="editAR(${x.id})">تعديل</button> <button class="btn del" onclick="delAR(${x.id})">حذف</button></td></tr>`).join('')}</table></div>`},
-async rolepanels(){const l=await api('/rolepanels');window._rr=[];$('#main').innerHTML=`<div class="card"><h3>🏷️ بانل رتب بالأزرار</h3><div class="row"><div><label>الروم</label>${sel('rr_c',chans())}</div><div><label>العنوان</label><input id="rr_t" value="🏷️ اختر رتبك"></div><div><label>الطريقة</label><select id="rr_m"><option value="toggle">أي عدد من الرتب</option><option value="single">رتبة وحدة فقط</option></select></div></div>
- <label>الوصف</label><input id="rr_d"><div id="rr_rows"></div><button class="btn" onclick="rrAdd()">➕ رتبة</button> <button class="btn pri" onclick="rrSend()">📤 إرسال البانل</button>
- <div class="mut">الرتب اللي فيها صلاحيات إدارية ممنوعة. لازم رتبة البوت فوق الرتب.</div></div>
- <div class="card tbl"><table><tr><th>#</th><th>العنوان</th><th>الرتب</th><th></th></tr>${l.map(x=>`<tr><td>${x.id}</td><td>${esc(x.title)}</td><td>${x.roles.map(r=>esc((guild.roles.find(y=>y.id==r.role_id)||{}).name||r.role_id)).join('، ')}</td><td><button class="btn" onclick="rrRe(${x.id})">تحديث الرسالة</button> <button class="btn del" onclick="rrDel(${x.id})">حذف</button></td></tr>`).join('')}</table></div>`;rrAdd()},
-async announce(){const t=await api('/announce/templates');window._tp=t;$('#main').innerHTML=`<div class="card"><h3>📣 إرسال إعلان</h3><div class="row"><div><label>القالب</label><select id="an_tp" onchange="anTpl()">${Object.entries({custom:'إعلان حر',offer:'عرض خاص',new_bot:'بوت جديد',store_open:'فتح المتجر (يفتحه تلقائياً)',store_closed:'إغلاق المتجر (يقفله تلقائياً)',maintenance:'صيانة',update:'تحديث'}).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
- <div><label>الروم (فاضي = الافتراضي)</label>${sel('an_c',chans())}</div><div><label>المنشن</label><select id="an_p"><option value="none">بدون</option><option value="everyone">@everyone</option><option value="here">@here</option><option value="role">رتبة</option></select></div><div><label>الرتبة</label>${sel('an_r',guild.roles)}</div></div>
- <label>العنوان</label><input id="an_t" value="${esc(t.custom.title)}"><label>النص</label><textarea id="an_b" rows="6"></textarea>
- <div class="row"><div><label>اللون HEX</label><input id="an_col" value="#9b6bff"></div><div style="flex:2"><label>رابط صورة (اختياري)</label><input id="an_i"></div><div><label><input id="an_pl" type="checkbox"> نص عادي بدون إيمبد</label></div></div><br><button class="btn pri" onclick="sendAn()">📤 إرسال</button>
- <div class="mut">يمديك أيضاً /announce من ديسكورد.</div></div>`},
-async content(){CT=await api('/content');const ch=sel('ct_ch',chans());$('#main').innerHTML=`<div class="card"><h3>📝 القوانين والسياسات</h3><div class="mut">عدّل النص واضغط «حفظ وتوليد» وتتولد الصورة من جديد تلقائياً (يحتاج Python + Pillow على جهازك). بعدها أرسلها للروم. الرسائل القديمة المرسلة ما تتغير، أرسل نسخة جديدة.</div>
- <label>روم الإرسال</label>${ch}</div>`+Object.keys(CT).map(ctCard).join('')},
-async images(){const l=await api('/images');$('#main').innerHTML=`<div class="card"><h3>🖼️ الصور</h3><div class="mut">ارفع صورة بدل أي صورة افتراضية (PNG أو JPG، حتى 8MB). «الأصلية» ترجّع الصورة الافتراضية. تُحفظ مع النسخ الاحتياطي.</div></div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">${l.map(x=>`<div class="card"><b>${x.file}</b><div class="mut">${x.uploaded?'📤 مرفوعة':x.generated?'🛠️ مولّدة':'📦 افتراضية'}</div><img class="pv" src="/assets/${x.file}?v=${Date.now()}" loading="lazy" style="max-height:140px;object-fit:contain">
- <input type="file" accept="image/png,image/jpeg" onchange="upImg('${x.file}',this)"><br><button class="btn del" onclick="resetImg('${x.file}')">↩️ الأصلية</button></div>`).join('')}</div>`},
-async backup(){await V.backup0();$('#main').insertAdjacentHTML('beforeend',`<div class="card"><h3>🔑 نسخة الأسرار (التوكنات) — مشفّرة</h3><div class="mut">توكن البوت الرئيسي والمستضافة ما تدخل النسخة العادية. من هنا تصدّرها بملف مشفّر بباسفريز (8+ أحرف) وتستعيدها بعد أي إعادة كتابة للكود. الباسفريز ما ينحفظ، لو ضاع ما تنفتح.</div><div class="row"><input id="sx_p" type="password" placeholder="باسفريز"><button class="btn pri" onclick="secExport()">⬇️ تصدير</button></div><hr><div class="row"><input id="sx_f" type="file"><input id="sx_p2" type="password" placeholder="باسفريز"><button class="btn" onclick="secImport()">⬆️ استعادة</button></div></div>`)},
-async backup0(){const l=await api('/backup/list');$('#main').innerHTML=`<div class="card"><h3>💾 نسخة احتياطية</h3><div class="mut">الملف فيه: كل الإعدادات والأنظمة والداشبورد (منتجات، كوبونات، ردود، رتب أزرار، قوانين...) + الطلبات والتذاكر والعملاء + الصور المرفوعة. لا يحتوي التوكن. ويمديك من ديسكورد: <b>/backup</b> يرسله لك بالخاص، و<b>/restore</b> يرجّعه.</div><br>
- <a class="btn pri" href="/api/backup/download?scope=full">⬇️ نسخة كاملة</a> <a class="btn" href="/api/backup/download?scope=config">⬇️ إعدادات وأنظمة فقط</a> <a class="btn" href="/api/backup/download?scope=full&images=0">⬇️ كاملة بدون صور</a></div>
- <div class="card"><h3>♻️ استعادة</h3><input type="file" id="bk_f" accept=".gz,.json" onchange="bkPrev()"><div id="bk_s" class="mut"></div>
- <div class="row"><div><label>الطريقة</label><select id="bk_m"><option value="replace">استبدال</option><option value="merge">دمج</option></select></div><button class="btn del" id="bk_b" onclick="bkRestore()" disabled>♻️ استعادة</button></div>
- <div class="mut">يتم حفظ نسخة أمان تلقائياً قبل الاستعادة. وتقدر بدل ذلك تحط الملف داخل مجلد <b>data/restore</b> وتشغّل البوت فيستعيده تلقائياً (مفيد لو أعدت كتابة الكود).</div></div>
- <div class="card tbl"><h3>🗄️ نسخ محفوظة على الجهاز</h3><table>${l.map(x=>`<tr><td>${esc(x.name)}</td><td>${(x.size/1024).toFixed(0)}KB</td><td>${new Date(x.time).toLocaleString('ar')}</td><td><a class="btn" href="/api/backup/file/${encodeURIComponent(x.name)}">تنزيل</a></td></tr>`).join('')}</table></div>`+form('backup','⏱️ النسخ التلقائي')},
-async setup(){const ch=sel('ich',chans());$('#main').innerHTML=`<div class="card"><h3>🏗️ تجهيز السيرفر تلقائياً</h3><div class="mut">ينشئ الرتب والرومات والصلاحيات، ويرسل القوانين والسياسات والأسعار وبانلات الطلب والتذاكر والتوثيق، ويحفظ كل الإعدادات. آمن للتكرار (ما يكرر الموجود).</div><br><button class="btn pri" onclick="runSetup()">🚀 ابدأ التجهيز</button></div><div class="card"><h3>🖼️ إرسال صور المعلومات</h3><label>الروم</label>${ch}<br><br>${[['rules','📜 القوانين'],['store','📋 سياسة المتجر'],['trade','🤝 البيع والشراء'],['refund','🛡️ الضمان'],['howto','🧭 طريقة الطلب'],['faq','❓ الأسئلة'],['payment','💳 طرق الدفع'],['prices','💰 الأسعار'],['verify','✅ التوثيق']].map(([k,l])=>`<button class="btn pri" onclick="si('${k}')">${l}</button>`).join(' ')}</div>`},
-async panels(){const ch=sel('pch',chans());$('#main').innerHTML=`<div class="card"><h3>📢 إرسال البانلات</h3><label>الروم</label>${ch}<br><br>
- <button class="btn pri" onclick="sp('store')">🛒 بانل المتجر</button> <button class="btn pri" onclick="sp('tickets')">🎫 بانل التذاكر</button></div>
- <div class="card"><h3>🖼️ الصور الافتراضية (مصنوعة من لوجو NOVA)</h3><div class="mut">تقدر تغيّرها بروابط من الإعدادات.</div>
- ${['store_banner','tickets_banner','ticket_inside','store_ticket'].map(n=>`<img class="pv" src="/assets/${n}.png">`).join('')}</div>`}
-};
+/* اتجاه الداشبورد: عربي من اليمين لليسار (القائمة والنصوص والحقول على اليمين) */
+html{direction:rtl}body{text-align:right}
+input,textarea,select{text-align:start}
+input[dir=ltr],textarea[dir=ltr]{direction:ltr;text-align:left}
+:root{--bg:#000;--s1:#0b0b0b;--s2:#131313;--s3:#1a1a1a;--line:#1f1f1f;--tx:#f0f0f0;--mu:#808080;--r:16px}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+*:focus{outline:none}
+:focus-visible{outline:1px solid #555;outline-offset:2px}
+button,input,select,textarea{font:inherit;color:inherit;-webkit-appearance:none;appearance:none}
+body{background:var(--bg);color:var(--tx);font-family:Cairo,system-ui,sans-serif;display:flex;min-height:100vh;background-image:radial-gradient(900px 400px at 85% -10%,#141414,transparent)}
+.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+aside{width:250px;border-left:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;background:#030303}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 10px 20px;font-weight:800;font-size:17px}
+.brand .av{width:40px;height:40px;border-radius:12px;background:var(--s3);display:grid;place-items:center;overflow:hidden;border:1px solid #2a2a2a}
+.brand img{width:100%;height:100%;object-fit:cover}
+.brand small{display:flex;align-items:center;gap:6px;color:var(--mu);font-weight:400;font-size:12px}
+.dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:pu 2.4s infinite}
+@keyframes pu{50%{opacity:.25}}
+nav{display:flex;flex-direction:column;gap:4px}
+nav button{display:flex;align-items:center;gap:12px;width:100%;text-align:right;background:none;border:0;padding:11px 14px;border-radius:12px;color:var(--mu);cursor:pointer;position:relative;transition:background .2s,color .2s,transform .15s;opacity:0;transform:translateX(16px);animation:in .5s forwards}
+nav button:hover{background:var(--s2);color:var(--tx)}
+nav button:active{transform:scale(.97)}
+nav button.on{background:#fff;color:#000;font-weight:600}
+@keyframes in{to{opacity:1;transform:none}}
+main{flex:1;padding:36px;max-width:1020px;min-width:0}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.tile{width:46px;height:46px;border-radius:14px;background:var(--s2);border:1px solid #262626;display:grid;place-items:center;flex:none}
+.tile .i{width:22px;height:22px}
+h1{font-size:25px;font-weight:800;line-height:1.2}
+.sub{color:var(--mu);font-size:14px}
+section{display:none}
+section.on{display:block;animation:sw .35s ease}
+@keyframes sw{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card{background:linear-gradient(180deg,#0f0f0f,var(--s1));border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-bottom:16px;transition:border-color .25s}
+.card:hover{border-color:#2c2c2c}
+.card h3{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.stat{display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,#0f0f0f,var(--s1));border:1px solid var(--line);border-radius:var(--r);padding:20px;transition:transform .2s,border-color .2s}
+.stat:hover{transform:translateY(-3px);border-color:#333}
+.stat b{display:block;font-size:28px;font-weight:800;line-height:1.1}
+.stat span{color:var(--mu);font-size:13px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+label.f{display:block;margin-bottom:14px}
+label.f>span{display:block;color:var(--mu);font-size:13px;margin-bottom:6px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--s2);border:1px solid var(--line);border-radius:11px;padding:11px 13px;transition:border-color .2s,background .2s}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m1 1 5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:left 13px center;padding-left:34px}
+select option{background:#111}
+input:focus,select:focus,textarea:focus{border-color:#4d4d4d;background:#161616}
+textarea{min-height:110px;resize:vertical}
+input[type=color]{width:100%;height:44px;border-radius:11px;border:1px solid var(--line);background:var(--s2);padding:4px;cursor:pointer}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}input[type=color]::-webkit-color-swatch{border:0;border-radius:7px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#000;border:0;border-radius:11px;padding:11px 22px;font-weight:600;cursor:pointer;transition:transform .15s,opacity .2s}
+.btn:hover{opacity:.88}.btn:active{transform:scale(.96)}.btn:disabled{opacity:.4;cursor:default}
+.seg{display:flex;background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:16px;gap:4px}
+.seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:none;border:0;border-radius:9px;padding:9px 6px;color:var(--mu);cursor:pointer;transition:all .2s;font-size:14px}
+.seg button:active{transform:scale(.96)}
+.seg button.on{background:#fff;color:#000;font-weight:600}
+.row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.row .tile{width:38px;height:38px;border-radius:11px}.row .tile .i{width:17px;height:17px}
+.row>div:nth-child(2){flex:1}
+.row small{display:block;color:var(--mu);font-size:12.5px}
+.sw{position:relative;width:48px;height:27px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;cursor:pointer;z-index:1}
+.sw i{position:absolute;inset:0;background:#222;border-radius:20px;transition:.25s}
+.sw i::after{content:"";position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#777;transition:.25s}
+.sw input:checked+i{background:#fff}
+.sw input:checked+i::after{right:24px;background:#000}
+.dc{background:#1e1f22;border-radius:12px;padding:16px;display:flex;gap:12px;align-items:flex-start}
+.dc .bot{width:38px;height:38px;border-radius:50%;background:#2e2f34;display:grid;place-items:center;flex:none}
+.dc .nm{font-weight:600;margin-bottom:6px}.dc .nm em{font-style:normal;background:#5b5b5b;color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;margin-right:6px}
+.dc .body{flex:1;min-width:0}
+.pv{background:#2b2d31;border-radius:10px;padding:14px 16px;border-right:4px solid #fff;word-break:break-word;white-space:pre-wrap;transition:border-color .2s;animation:sw .3s}
+.pv.v2{border:1px solid #3a3c41;border-right:4px solid #fff}
+.pv h4{font-size:17px;margin-bottom:6px}.pv hr{border:0;border-top:1px solid #44464b;margin:8px 0}
+.pv img{display:block;max-width:100%;border-radius:8px;margin-top:10px}
+.pv small{display:block;color:#a0a0a0;margin-top:10px;font-size:12px}
+.pv .lb{display:inline-flex;align-items:center;gap:6px;background:#3b3d43;border-radius:8px;padding:7px 14px;margin-top:12px;font-size:14px;white-space:normal}
+.pv.txt{background:none;border:0;padding:0}
+.bar{height:9px;background:#161616;border-radius:9px;overflow:hidden;margin:16px 0 10px}
+.bar div{height:100%;width:0;background:#fff;border-radius:9px;transition:width .5s}
+.cmds{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.cmd{display:flex;gap:12px;align-items:center;background:var(--s2);border:1px solid var(--line);border-radius:13px;padding:13px;transition:border-color .2s,transform .2s}
+.cmd:hover{border-color:#383838;transform:translateY(-2px)}
+.cmd code{display:block;color:#fff;direction:ltr;text-align:right;font-weight:600}.cmd span{color:var(--mu);font-size:13px}
+.cmd .tile{width:38px;height:38px;border-radius:11px;background:var(--s3)}.cmd .tile .i{width:17px;height:17px}
+#toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,30px);display:flex;gap:9px;align-items:center;background:#fff;color:#000;padding:12px 22px;border-radius:13px;font-weight:600;opacity:0;pointer-events:none;transition:.3s;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.bad{background:#2a2a2a;color:#fff;border:1px solid #444}
 
-let CT={};
-const b64=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)});
-const ok=(r,m)=>alert(r.ok?(m||'✅ تم'):'❌ '+(r.error||'خطأ'));
-async function botSave(start){const r=await api('/bot/credentials','POST',{token:$('#bt').value,guildId:$('#bg').value,clientId:$('#bc').value,autostart:$('#ba').checked,start});ok(r,start?'✅ تم الحفظ وجاري التشغيل':'✅ تم الحفظ');if(r.ok)$('#bt').value=''}
-async function botAct(a){const r=await api('/bot/'+a,'POST');if(!r.ok)alert('❌ '+r.error)}
-async function botPres(){ok(await api('/bot/presence','POST',{status:$('#ps').value,type:$('#pt').value,text:$('#px').value}),'✅ تم تطبيق الحالة')}
-async function loadReport(custom){const q=custom&&$('#rf').value&&$('#rt').value?`from=${$('#rf').value}&to=${$('#rt').value}`:`period=${$('#rp').value}`;$('#rcsv').href='/api/report.csv?'+q;
- const d=await api('/report?'+q);if(d.error)return $('#rbody').innerHTML='<div class="card">❌ '+esc(d.error)+'</div>';const m=n=>(Math.round(n*100)/100).toLocaleString('en-US'),c=d.currency||'';
- const list=(a,f)=>a.length?`<table>${a.map(f).join('')}</table>`:'<div class="mut">لا يوجد</div>';
- $('#rbody').innerHTML=`<div class="grid">${[['طلبات جديدة',d.created],['مسلّمة',d.delivered],['ملغية',d.cancelled],['قيد التنفيذ',d.inProgress],['بانتظار الدفع',d.waiting],['شهور نيترو مباعة',m(d.months)],['خصومات (شهر)',m(d.discountMonths)],['التقييم',d.reviews?d.avgStars+'⭐':'-']].map(([l,v])=>`<div class="card stat"><b>${v}</b>${l}</div>`).join('')}</div>
- <div class="card"><h3>💰 الأرباح التقديرية</h3>${d.configured?`<div class="grid"><div class="card stat"><b>${m(d.revenue)} ${esc(c)}</b>الإيراد</div><div class="card stat"><b>${m(d.cost)} ${esc(c)}</b>التكلفة</div><div class="card stat"><b>${m(d.profit)} ${esc(c)}</b>الصافي</div></div>`:'<div class="mut">حدد قيمة شهر نيترو من 🧾 إعدادات الطلبات.</div>'}</div>
- <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><div class="card"><h3>💳 حسب الدفع</h3>${list(Object.entries(d.byPay),([k,v])=>`<tr><td>${k}</td><td>${v.orders} طلب</td><td>${m(v.amount)}</td></tr>`)}</div>
- <div class="card"><h3>🔥 الأكثر طلباً</h3>${list(d.products,([n,x])=>`<tr><td>${esc(n)}</td><td>${x}</td></tr>`)}</div>
- <div class="card"><h3>🛡️ الستاف</h3>${list(d.staff,([n,x])=>`<tr><td>${esc(n)}</td><td>${x}</td></tr>`)}</div>
- <div class="card"><h3>👑 العملاء</h3>${list(d.customers,([n,x])=>`<tr><td>${esc(n)}</td><td>${m(x)} شهر</td></tr>`)}</div></div>
- <div class="card tbl"><h3>📅 يومياً</h3>${list(d.days,x=>`<tr><td>${x.day}</td><td>${x.orders} طلب</td><td>${m(x.months)} شهر</td></tr>`)}</div>`}
-async function addBL(){ok(await api('/blacklist','POST',{user_id:$('#bl_id').value.trim(),reason:$('#bl_r').value,ban:$('#bl_b').checked}));go('blacklist')}
-async function delBL(i){await api('/blacklist/'+i,'DELETE');go('blacklist')}
-async function addG(){const r=await api('/giveaways','POST',{prize:$('#gp').value,minutes:$('#gm').value,winners:$('#gw').value,channel:$('#gc').value||cfg.gw_channel,role:$('#gr').value});ok(r,'✅ بدأت القرعة');go('giveaways')}
-async function gEdit(i,p,w){const prize=prompt('الجائزة',p);if(prize===null)return;const winners=prompt('عدد الفائزين',w);if(winners===null)return;const m=prompt('تمديد بالدقائق (0 = بدون، سالب = تقليل)','0')??'0';ok(await api('/giveaways/'+i,'PATCH',{prize,winners,addMinutes:m}));go('giveaways')}
-async function gDel(i){if(confirm('حذف القرعة؟')){ok(await api('/giveaways/'+i,'DELETE'));go('giveaways')}}
-async function sgEdit(i){const t=prompt('نص الاقتراح الجديد');if(t){ok(await api('/suggestions/'+i,'PATCH',{text:t}));go('suggestions')}}
-async function sgDel(i){if(confirm('حذف الاقتراح؟')){ok(await api('/suggestions/'+i,'DELETE'));go('suggestions')}}
-async function tfSetup(){const r=await api('/2fa/setup','POST');$('#tf_box').innerHTML=`<p>أضف هذا المفتاح يدوياً في تطبيق المصادقة:</p><pre dir="ltr" style="user-select:all">${esc(r.secret)}</pre><div class="mut" dir="ltr" style="word-break:break-all">${esc(r.uri)}</div><div class="row"><input id="tf_c" placeholder="اكتب الرمز اللي يطلع لك" style="max-width:220px"><button class="btn pri" onclick="tfOn()">تفعيل</button></div>`}
-async function tfOn(){ok(await api('/2fa/enable','POST',{code:$('#tf_c').value}),'✅ تم تفعيل التحقق');go('security')}
-async function tfOff(){ok(await api('/2fa/disable','POST',{code:$('#tf_c').value}),'✅ تم التعطيل');go('security')}
-async function secExport(){const p=$('#sx_p').value;const r=await fetch('/api/backup/secrets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:p})});if(!r.ok){alert('❌ '+((await r.json()).error||'خطأ'));return}const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download='nova-secrets.enc';a.click()}
-async function secImport(){const f=$('#sx_f').files[0];if(!f)return alert('اختر الملف');const d=await new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)});ok(await api('/backup/secrets/restore','POST',{data:d,passphrase:$('#sx_p2').value}),'✅ تمت الاستعادة. أعد تشغيل البرنامج')}
-async function hKey(i){if(!confirm('توليد مفتاح جديد؟ المفتاح القديم يتعطل.'))return;const r=await api(`/hosted/${i}/portal-key`,'POST');if(r.ok)prompt('مفتاح لوحة العميل (يظهر مرة وحدة). رقم البوت: '+i,r.key);else alert('❌ '+r.error)}
-async function hSusp(i,on){ok(await api(`/hosted/${i}/${on?'suspend':'resume'}`,'POST'));go('hosted')}
-async function uAdd(){ok(await api('/users','POST',{name:$('#u_n').value,password:$('#u_p').value,role:$('#u_r').value}));go('users')}
-async function uDel(n){if(confirm('حذف '+n+'؟')){ok(await api('/users/'+encodeURIComponent(n),'DELETE'));go('users')}}
-async function hAdd(){const templates=[...document.querySelectorAll('.h_tp:checked')].map(x=>x.value);const r=await api('/hosted','POST',{name:$('#h_n').value,token:$('#h_t').value,guildId:$('#h_g').value.trim(),ownerId:$('#h_o').value.trim(),orderId:$('#h_or').value,days:$('#h_d').value,templates,start:true});ok(r,'✅ أُضيف ويتم تشغيله');go('hosted')}
-async function hAct(i,a){const r=await api(`/hosted/${i}/${a}`,'POST');if(!r.ok)alert('❌ '+r.error);setTimeout(()=>go('hosted'),a=='stop'?300:2500)}
-async function hDel(i){if(confirm('حذف البوت وكل بياناته؟')){ok(await api('/hosted/'+i,'DELETE'));go('hosted')}}
-async function hLogs(i){const l=await api(`/hosted/${i}/logs`);$('#hx'+i).innerHTML='<pre style="max-height:260px;overflow:auto;direction:ltr;text-align:left">'+esc(l.join('\n')||'لا يوجد')+'</pre>'}
-async function hMore(i){const b=window._hb.bots.find(x=>x.id==i),pr=b.presence||{};$('#hx'+i).innerHTML=`<div class="row"><div><label>الاسم</label><input id="m_n${i}" value="${esc(b.name)}"></div><div><label>ايدي السيرفر</label><input id="m_g${i}" value="${esc(b.guild_id)}"></div><div><label>ايدي العميل</label><input id="m_o${i}" value="${esc(b.owner_id)}"></div><div><label>تمديد (أيام)</label><input id="m_d${i}" type="number" value="0"></div></div>
- <div class="row"><div style="flex:2"><label>توكن جديد (اختياري)</label><input id="m_t${i}" type="password" autocomplete="off"></div><div><label>الحالة</label><select id="m_s${i}">${['online','idle','dnd','invisible'].map(x=>`<option ${pr.status==x?'selected':''}>${x}</option>`).join('')}</select></div><div><label>النشاط</label><select id="m_a${i}">${['Playing','Watching','Listening','Competing'].map(x=>`<option ${pr.type==x?'selected':''}>${x}</option>`).join('')}</select></div><div><label>النص</label><input id="m_x${i}" value="${esc(pr.text||'')}"></div></div>
- <div class="row"><div><label>الباقة</label><select id="m_pk${i}">${['','bronze','gold','diamond'].map(x=>`<option value="${x}" ${b.package==x?'selected':''}>${x||'—'}</option>`).join('')}</select></div><div style="flex:3"><label>حقوق المشتري</label><div class="row">${[['config','تعديل الإعدادات'],['power','تشغيل/إيقاف'],['presence','تغيير الحالة'],['logs','السجل'],['portal','لوحة تحكم']].map(([k,l])=>`<label style="display:flex;gap:4px"><input type="checkbox" class="m_rt${i}" value="${k}" style="width:auto" ${(b.rights||{})[k]?'checked':''}>${l}</label>`).join('')}</div></div></div>
- <div class="row"><div><label>تشغيل تلقائي</label><select id="m_au${i}"><option value="1" ${b.autostart?'selected':''}>نعم</option><option value="0" ${!b.autostart?'selected':''}>لا</option></select></div><div><label>القوالب</label><div class="row">${window._hb.templates.map(t=>`<label style="display:flex;gap:4px"><input type="checkbox" class="m_tp${i}" value="${t.id}" style="width:auto" ${b.templates.includes(t.id)?'checked':''}>${t.emoji}</label>`).join('')}</div></div></div><button class="btn pri" onclick="hSave(${i})">💾 حفظ</button>`}
-async function hSave(i){const v=id=>$('#'+id+i).value,body={name:v('m_n'),guildId:v('m_g').trim(),ownerId:v('m_o').trim(),autostart:v('m_au')=='1',package:v('m_pk'),rights:Object.fromEntries(['config','power','presence','logs','portal'].map(k=>[k,document.querySelector('.m_rt'+i+'[value='+k+']').checked?1:0])),addDays:+v('m_d')||0,presence:{status:v('m_s'),type:v('m_a'),text:v('m_x')},templates:[...document.querySelectorAll('.m_tp'+i+':checked')].map(x=>x.value)};if(v('m_t'))body.token=v('m_t');const r=await api('/hosted/'+i,'PUT',body);ok(r,'✅ تم الحفظ (أعد التشغيل لتطبيق القوالب/التوكن الجديد)');go('hosted')}
-async function hCfg(i){const b=window._hb.bots.find(x=>x.id==i),gi=b.state=='online'?await api(`/hosted/${i}/guild`):null,box=$('#hx'+i);
- const inp=(t,f)=>{const id=`c_${i}_${t.id}_${f.key}`,v=(b.config[t.id]||{})[f.key]??f.def??'';let h;
-  if(gi&&['channel','category'].includes(f.type)){const L=gi.channels.filter(c=>f.type=='category'?c.type==4:c.type!=4);h=`<select id="${id}"><option value="">—</option>${L.map(c=>`<option value="${c.id}" ${c.id==v?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`}
-  else if(f.type=='channels'){const cur=String(v).split(',');h=gi?`<select id="${id}" multiple size="6">${gi.channels.filter(c=>c.type==0).map(c=>`<option value="${c.id}" ${cur.includes(c.id)?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:`<input id="${id}" value="${esc(v)}" placeholder="ids مفصولة بفاصلة">`}
-  else if(gi&&f.type=='role')h=`<select id="${id}"><option value="">—</option>${gi.roles.map(r=>`<option value="${r.id}" ${r.id==v?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`;
-  else if(f.type=='bool')h=`<select id="${id}"><option value="1" ${v=='1'?'selected':''}>✅</option><option value="0" ${v!='1'?'selected':''}>❌</option></select>`;
-  else if(f.type=='textarea')h=`<textarea id="${id}" rows="4">${esc(v)}</textarea>`;
-  else h=`<input id="${id}" value="${esc(v)}" ${f.type=='number'?'type="number"':''}>`;
-  return `<div><label>${esc(f.label)}</label>${h}</div>`};
- box.innerHTML=(gi?'':'<div class="mut">⚠️ البوت غير شغال، الرومات والرتب تُدخل كايدي. شغّله لتظهر القوائم.</div>')+b.templates.map(id=>{const t=window._hb.templates.find(x=>x.id==id);return t?`<h4>${t.emoji} ${esc(t.label)} <span class="mut">${t.commands.map(c=>'/'+c).join(' ')}</span></h4>${t.settings.map(f=>inp(t,f)).join('')}`:''}).join('')+`<button class="btn pri" onclick="hCfgSave(${i})">💾 حفظ الإعدادات</button>`}
-async function hCfgSave(i){const b=window._hb.bots.find(x=>x.id==i),config={};for(const id of b.templates){const t=window._hb.templates.find(x=>x.id==id);config[id]={};for(const f of t.settings){const e=$(`#c_${i}_${id}_${f.key}`);if(e)config[id][f.key]=e.multiple?[...e.selectedOptions].map(o=>o.value).join(','):e.value}}ok(await api('/hosted/'+i,'PUT',{config}),'✅ تم الحفظ');go('hosted')}
-async function gAct(i,a){const r=await api(`/giveaways/${i}/${a}`,'POST');ok(r,'✅ الفائزون: '+((r.winners||[]).join(', ')||'لا أحد'));go('giveaways')}
-async function sgAct(i,s){const n=prompt('ملاحظة للعضو (اختياري)')??'';ok(await api(`/suggestions/${i}/decide`,'POST',{status:s,note:n}));go('suggestions')}
-async function saveAR(){const r=await api('/autoreplies','POST',{id:$('#ar_id').value||undefined,trigger:$('#ar_t').value,response:$('#ar_r').value,match:$('#ar_m').value,channel_id:$('#ar_c').value,cooldown:$('#ar_d').value,reply:$('#ar_p').checked});ok(r);if(r.ok)go('autoreply')}
-function editAR(i){const x=_ar.find(a=>a.id==i);$('#ar_id').value=x.id;$('#ar_t').value=x.trigger;$('#ar_r').value=x.response;$('#ar_m').value=x.match;$('#ar_c').value=x.channel_id;$('#ar_d').value=x.cooldown;$('#ar_p').checked=!!x.reply;scrollTo(0,0)}
-async function delAR(i){if(confirm('حذف؟')){await api('/autoreplies/'+i,'DELETE');go('autoreply')}}
-function rrAdd(){const n=document.querySelectorAll('.rr_row').length,d=document.createElement('div');d.className='row rr_row';d.style.marginTop='6px';d.innerHTML=`<div>${sel('rr_role'+n,guild.roles)}</div><div><input id="rr_lb${n}" placeholder="اسم الزر"></div><div><input id="rr_em${n}" placeholder="إيموجي" style="width:80px"></div>`;$('#rr_rows').appendChild(d)}
-async function rrSend(){const roles=[...document.querySelectorAll('.rr_row')].map((_,n)=>({role_id:$('#rr_role'+n).value,label:$('#rr_lb'+n).value,emoji:$('#rr_em'+n).value})).filter(r=>r.role_id);
- ok(await api('/rolepanels','POST',{channel:$('#rr_c').value,title:$('#rr_t').value,description:$('#rr_d').value,mode:$('#rr_m').value,roles}),'✅ تم الإرسال');go('rolepanels')}
-async function rrRe(i){ok(await api(`/rolepanels/${i}/resend`,'POST'))}
-async function rrDel(i){if(confirm('حذف البانل ورسالته؟')){await api('/rolepanels/'+i,'DELETE');go('rolepanels')}}
-function anTpl(){const t=_tp[$('#an_tp').value];$('#an_t').value=t.title;$('#an_b').value=t.body}
-async function sendAn(){ok(await api('/announce','POST',{template:$('#an_tp').value,channel:$('#an_c').value||cfg.announce_channel,title:$('#an_t').value,body:$('#an_b').value,ping:$('#an_p').value,role:$('#an_r').value||undefined,color:$('#an_col').value,image:$('#an_i').value,plain:$('#an_pl').checked}),'✅ تم الإرسال')}
-function ctCard(k){const c=CT[k];return `<div class="card" id="ct_${k}"><h3>${esc(c.title)} <span class="mut">(${k})</span></h3><div class="row"><div><label>العنوان</label><input id="ct_${k}_title" value="${esc(c.title)}"></div><div><label>العنوان الإنجليزي</label><input id="ct_${k}_sub" value="${esc(c.sub)}"></div></div>
- ${c.items.map((x,n)=>`<div class="row" style="margin-top:6px"><div style="flex:1"><input id="ct_${k}_h${n}" placeholder="العنوان" value="${esc(x.h)}"></div><div style="flex:3"><textarea id="ct_${k}_t${n}" rows="2" placeholder="النص">${esc(x.t)}</textarea></div><button class="btn del" style="flex:0" onclick="ctDel('${k}',${n})">✖</button></div>`).join('')}
- <label>الجملة بالأسفل</label><input id="ct_${k}_footer" value="${esc(c.footer)}"><br>
- <button class="btn" onclick="ctAdd('${k}')">➕ بند</button> <button class="btn pri" onclick="ctSave('${k}')">💾 حفظ وتوليد الصورة</button> <button class="btn" onclick="ctSend('${k}')">📤 إرسال للروم</button> <button class="btn del" onclick="ctReset('${k}')">↩️ الافتراضي</button>
- <img class="pv" id="ct_${k}_img" src="/assets/${c.file}?v=${Date.now()}" loading="lazy"></div>`}
-function ctRead(k){const c=CT[k];c.title=$(`#ct_${k}_title`).value;c.sub=$(`#ct_${k}_sub`).value;c.footer=$(`#ct_${k}_footer`).value;c.items=c.items.map((_,n)=>({h:$(`#ct_${k}_h${n}`).value,t:$(`#ct_${k}_t${n}`).value}));return c}
-function ctDraw(k){$('#ct_'+k).outerHTML=ctCard(k)}
-function ctAdd(k){ctRead(k).items.push({h:'',t:''});ctDraw(k)}
-function ctDel(k,n){ctRead(k).items.splice(n,1);ctDraw(k)}
-async function ctSave(k){const r=await api('/content/'+k,'PUT',ctRead(k));if(r.ok){CT[k]=(await api('/content'))[k];ctDraw(k);alert('✅ تم توليد الصورة')}else alert('❌ '+r.error)}
-async function ctReset(k){if(!confirm('رجوع للنص الافتراضي؟'))return;ok(await api(`/content/${k}/reset`,'POST'));CT=await api('/content');ctDraw(k)}
-async function ctSend(k){if(!$('#ct_ch').value)return alert('اختر الروم أعلى الصفحة');ok(await api(`/content/${k}/send`,'POST',{channel:$('#ct_ch').value}),'✅ تم الإرسال')}
-async function upImg(f,el){if(!el.files[0])return;ok(await api('/images/'+f,'POST',{data:await b64(el.files[0])}));go('images')}
-async function resetImg(f){await api('/images/'+f,'DELETE');go('images')}
-async function bkPrev(){const f=$('#bk_f').files[0];if(!f)return;const r=await api('/backup/summary','POST',{data:await b64(f)});$('#bk_s').innerHTML=r.ok?`📅 ${new Date(r.created).toLocaleString('ar')} • ${r.scope} • 🖼️ ${r.images}<br>${r.text.replace(/\*\*/g,'').replace(/\n/g,'<br>')}`:'❌ '+esc(r.error);$('#bk_b').disabled=!r.ok}
-async function bkRestore(){if(!confirm('سيتم استبدال البيانات الحالية (مع حفظ نسخة أمان). متأكد؟'))return;const r=await api('/backup/restore','POST',{data:await b64($('#bk_f').files[0]),mode:$('#bk_m').value});ok(r,'✅ تمت الاستعادة. حدّث الصفحة.')}
-async function saveS(group){const b={};schema.filter(f=>f.group==group).forEach(f=>{const e=$('#s_'+f.key);b[f.key]=(f.type=='roles'||f.type=='channels')?[...e.selectedOptions].map(o=>o.value).join(','):e.value;
- if(f.type=='json'){try{JSON.parse(b[f.key])}catch{b._bad=f.label}}});
- if(b._bad)return alert('❌ JSON غير صحيح: '+b._bad);delete b._bad;const r=await api('/settings','PUT',b);alert(r.ok?'✅ تم الحفظ':'❌ خطأ')}
-async function addP(){await api('/products','POST',{category:$('#nc').value,name:$('#nn').value,months:$('#nm').value,emoji:$('#ne').value});go('products')}
-async function saveP(i){await api('/products/'+i,'PUT',{category:$('#c'+i).value,name:$('#n'+i).value,months:$('#m'+i).value,emoji:$('#e'+i).value,active:$('#a'+i).checked});alert('✅ تم')}
-async function delP(i){if(confirm('حذف؟')){await api('/products/'+i,'DELETE');go('products')}}
-async function setO(i,s){await api('/orders/'+i,'PATCH',{status:s})}
-async function addC(){await api('/coupons','POST',{code:$('#cc').value,percent:$('#cp').value,max_uses:$('#cm').value});go('coupons')}
-async function delC(c){await api('/coupons/'+c,'DELETE');go('coupons')}
-async function addT(){await api('/tkcats','POST',{name:$('#tn').value,emoji:$('#te').value,description:$('#td').value});go('tickets')}
-async function saveT(i){await api('/tkcats/'+i,'PUT',{name:$('#tn'+i).value,emoji:$('#te'+i).value,description:$('#td'+i).value});alert('✅ تم')}
-async function delT(i){if(confirm('حذف؟')){await api('/tkcats/'+i,'DELETE');go('tickets')}}
-async function saveCmd(n){await api('/cmds/'+n,'PUT',{aliases:$('#al'+n).value,role:$('#rl'+n).value,enabled:$('#en'+n).checked});alert('✅ تم')}
-async function addL(){await api('/levelroles','POST',{level:$('#lv').value,role_id:$('#lr').value,kind:$('#lk').value});go('levels')}
-async function delL(i){await api('/levelroles/'+i,'DELETE');go('levels')}
-async function delW(i){await api('/warns/'+i,'DELETE');go('mod')}
-async function si(k){const r=await api('/panel/info:'+k,'POST',{channel:$('#ich').value});alert(r.ok?'✅ تم الإرسال':'❌ '+r.error)}
-async function runSetup(){if(!confirm('تجهيز السيرفر كامل؟'))return;const r=await api('/setup-server','POST',{});alert(r.ok?'✅ بدأ التجهيز، يخلص خلال دقيقة أو اثنتين (تابع الكونسول)':'❌ '+r.error)}
-async function sp(k){const r=await api('/panel/'+k,'POST',{channel:$('#pch').value});alert(r.ok?'✅ تم الإرسال':'❌ '+r.error)}
-async function wp(){const r=await api('/panel/welcome','POST',{channel:$('#wch').value,user:$('#wu').value});alert(r.ok?'✅ تم':'❌ '+r.error)}
-</script></body></html>
-<!-- تم صنع البوت بمتجر نوفا ستور • يوزر الاونر: .5yb. -->
+.trow{display:grid;grid-template-columns:46px 1fr 1fr 44px;gap:8px;margin-bottom:8px;animation:sw .25s}
+.emo,.ib{background:var(--s2);border:1px solid var(--line);border-radius:11px;cursor:pointer;display:grid;place-items:center;height:44px;color:var(--mu);transition:background .2s,color .2s,transform .15s;font-size:20px}
+.emo:hover,.ib:hover{background:var(--s3);color:#fff}.emo:active,.ib:active{transform:scale(.94)}
+img.e{width:1.25em;height:1.25em;vertical-align:-.25em;object-fit:contain}.emo img.e{width:24px;height:24px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.chip{display:inline-flex;align-items:center;gap:7px;background:#3b3d43;border-radius:8px;padding:8px 14px;font-size:14px}
+.fake{width:100%;background:#1e1f22;border:1px solid #3a3c41;border-radius:8px;padding:10px 12px;color:#b5b5b5;display:flex;justify-content:space-between}
+#pk{position:fixed;z-index:20;width:310px;max-height:350px;overflow:auto;background:#101010;border:1px solid #2a2a2a;border-radius:14px;padding:12px;animation:sw .2s;box-shadow:0 14px 44px #000}
+.pk-h{color:var(--mu);font-size:12px;margin:2px 0 6px}
+.pk-g{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.pk-g button{width:38px;height:38px;background:none;border:0;border-radius:9px;cursor:pointer;font-size:21px;display:grid;place-items:center;color:inherit;transition:background .15s,transform .15s}
+.pk-g button:hover{background:#1d1d1d}.pk-g button:active{transform:scale(.9)}
+.pk-g img.e{width:26px;height:26px}
+.lbl{display:flex;justify-content:space-between;align-items:center}
+.lbl .ib{width:34px;height:30px;font-size:14px;border-radius:9px}
+.pill{display:inline-flex;gap:8px;align-items:center;padding:6px 14px;border-radius:20px;background:var(--s2);border:1px solid var(--line);font-size:13px}
+.np{display:flex;gap:20px;align-items:center}
+.art{width:128px;height:128px;border-radius:18px;background:var(--s3);display:grid;place-items:center;flex:none;overflow:hidden;color:#555;border:1px solid #262626}
+.art img{width:100%;height:100%;object-fit:cover;animation:sw .4s}.art .i{width:40px;height:40px}
+.np .info{flex:1;min-width:0}.np h2{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.ctrls .ib{width:48px;height:48px}.ctrls .ib.on{background:#fff;color:#000}
+input[type=range]{-webkit-appearance:none;height:6px;background:#222;border-radius:6px;padding:0;border:0;width:130px;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:0}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#fff;border:0}
+.q{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}.q:last-child{border:0}.q b{color:var(--mu);width:22px;font-weight:400}.q span{color:var(--mu);font-size:13px;margin-right:auto}
+.feed .it{padding:13px 0;border-bottom:1px solid var(--line);animation:sw .3s}.feed .it:last-child{border:0}
+.feed .it small{color:var(--mu);float:left}.feed .it p{color:#bbb;font-size:13.5px;white-space:pre-wrap;word-break:break-word;margin-top:3px}
+.empty{color:var(--mu);text-align:center;padding:26px 0}
+.banner{width:100%;border-radius:16px;border:1px solid var(--line);display:block;margin-bottom:16px;background:#050505;animation:sw .4s}
+.hero{position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-30px;background:var(--bg-art) center/cover;filter:blur(30px) brightness(.38);opacity:0;transition:opacity .8s;pointer-events:none}
+.hero.has::before{opacity:1}.hero>*{position:relative}
+.hint{color:var(--mu);font-size:12.5px;margin:-6px 0 14px}
+.logs{background:#080808;border:1px solid var(--line);border-radius:12px;padding:12px;max-height:220px;overflow:auto;font-size:12px;direction:ltr;text-align:left;color:#aaa;white-space:pre-wrap;margin-top:14px;font-family:ui-monospace,Consolas,monospace}
+.chip img{width:26px;height:26px}
+.top,.bg{display:none}
+.burger{width:44px;height:44px;border-radius:12px;background:var(--s2);border:1px solid var(--line);display:grid;place-content:center;gap:5px;cursor:pointer;flex:none}
+.burger i{display:block;width:20px;height:2px;border-radius:2px;background:#fff;transition:transform .25s,opacity .2s}
+.top b{font-size:16px;font-weight:800}
+.sg{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.sg:first-child{border-top:0}.sg>div{min-width:0;flex:1}.sg p{font-size:13.5px;word-break:break-word}.sg small{color:var(--mu);font-size:12px}
+.st{font-size:11.5px;padding:3px 10px;border-radius:99px;background:var(--s3);color:var(--mu);white-space:nowrap}.st.accepted{background:#12301c;color:#5fd488}.st.rejected{background:#341515;color:#f08585}
+@media(max-width:860px){
+body{flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:30;padding:10px 16px;background:rgba(3,3,3,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+aside{position:fixed;top:0;bottom:0;right:0;width:min(290px,84vw);height:100%;z-index:50;overflow-y:auto;transform:translateX(105%);transition:transform .3s ease;box-shadow:-20px 0 50px rgba(0,0,0,.6)}
+body.menu aside{transform:none}
+.bg{display:block;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}
+body.menu .bg{opacity:1;pointer-events:auto}
+body.menu .burger i:nth-child(1){transform:translateY(7px) rotate(45deg)}
+body.menu .burger i:nth-child(2){opacity:0}
+body.menu .burger i:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+main{padding:20px}.two{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01s!important;transition-duration:.01s!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="i-home" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+<symbol id="i-mega" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+<symbol id="i-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 11v2M13 17v2"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+<symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.41l8.7 8.7a2 2 0 0 0 2.82 0l7.17-7.17a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1"/></symbol>
+<symbol id="i-act" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
+<symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></symbol>
+<symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></symbol>
+<symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+<symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+<symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3 20 12 6 21z"/></symbol>
+<symbol id="i-skip" viewBox="0 0 24 24"><path d="M5 4 15 12 5 20z"/><path d="M19 5v14"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+<symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+<symbol id="i-logs" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></symbol>
+<symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.85 12.15 8-8M18 5l3 3M15 8l3 3"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/></symbol>
+<symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3L7 14.2 2 9.3l6.9-1z"/></symbol>
+</defs></svg>
+
+<header class="top"><button class="burger" id="bg_btn" aria-label="القائمة" aria-expanded="false"><i></i><i></i><i></i></button><b id="tt">لوحة التحكم</b></header>
+<div class="bg" id="bg"></div>
+<aside>
+  <div class="brand"><div class="av" id="ic"><svg class="i"><use href="#i-bot"/></svg></div><div><div id="gn">NOVA STORE</div><small><span class="dot"></span>البوت شغال</small></div></div>
+  <nav id="nav"></nav>
+</aside>
+<main>
+<section id="overview"><div class="head"><div class="tile"><svg class="i"><use href="#i-home"/></svg></div><div><h1>نظرة عامة</h1><div class="sub">حالة السيرفر والبوت</div></div></div>
+  <div class="grid">
+    <div class="stat"><div class="tile"><svg class="i"><use href="#i-users"/></svg></div><div><b data-k="members">0</b><span>عضو</span></div></div>
+    <div class="stat"><div class="tile"><svg class="i"><use href="#i-hash"/></svg></div><div><b data-k="channels">0</b><span>روم</span></div></div>
+    <div class="stat"><div class="tile"><svg class="i"><use href="#i-tag"/></svg></div><div><b data-k="roles">0</b><span>رتبة</span></div></div>
+    <div class="stat"><div class="tile"><svg class="i"><use href="#i-act"/></svg></div><div><b data-k="ping">0</b><span>بينج (ms)</span></div></div>
+  </div>
+</section>
+
+<section id="send"><div class="head"><div class="tile"><svg class="i"><use href="#i-send"/></svg></div><div><h1>إرسال رسالة</h1><div class="sub">امبد، كونتينر V2، أو رسالة عادية</div></div></div>
+  <div class="two"><div class="card">
+    <label class="f"><span>الروم</span><select id="s_ch"></select></label>
+    <div class="seg" data-seg="s"><button data-m="embed" class="on"><svg class="i"><use href="#i-panel"/></svg>امبد</button><button data-m="v2"><svg class="i"><use href="#i-layers"/></svg>كونتينر V2</button><button data-m="text"><svg class="i"><use href="#i-msg"/></svg>عادية</button></div>
+    <div data-show="embed v2"><label class="f"><span>العنوان</span><input type="text" id="s_title"></label></div>
+    <label class="f"><span class="lbl">النص<button type="button" class="ib" data-pick id="s_emo"><svg class="i"><use href="#i-smile"/></svg></button></span><textarea id="s_desc"></textarea></label>
+    <div data-show="embed v2"><div class="two"><label class="f"><span>اللون</span><input type="color" id="s_color" value="#ffffff"></label><label class="f"><span>الفوتر</span><input type="text" id="s_footer"></label></div>
+    <label class="f"><span>رابط صورة</span><input type="text" id="s_image" dir="ltr"></label></div>
+    <div data-show="v2"><div class="two"><label class="f"><span>نص زر الرابط</span><input type="text" id="s_bl"></label><label class="f"><span>رابط الزر</span><input type="text" id="s_bu" dir="ltr"></label></div></div>
+    <button class="btn" id="s_go"><svg class="i"><use href="#i-send"/></svg>إرسال</button>
+  </div><div class="card"><h3><svg class="i"><use href="#i-info"/></svg>معاينة</h3>
+    <div class="dc"><div class="bot"><svg class="i"><use href="#i-bot"/></svg></div><div class="body"><div class="nm">البوت<em>BOT</em></div><div class="pv" id="s_pv"></div></div></div></div></div>
+</section>
+
+<section id="broadcast"><div class="head"><div class="tile"><svg class="i"><use href="#i-mega"/></svg></div><div><h1>برودكاست</h1><div class="sub">إرسال رسالة لخاص الأعضاء</div></div></div>
+  <div class="two"><div class="card">
+    <label class="f"><span>المستلمين</span><select id="b_role"></select></label>
+    <div class="seg" data-seg="b"><button data-m="embed" class="on"><svg class="i"><use href="#i-panel"/></svg>امبد</button><button data-m="v2"><svg class="i"><use href="#i-layers"/></svg>كونتينر V2</button><button data-m="text"><svg class="i"><use href="#i-msg"/></svg>عادية</button></div>
+    <div data-show="embed v2" data-for="b"><label class="f"><span>العنوان</span><input type="text" id="b_title"></label></div>
+    <label class="f"><span>النص</span><textarea id="b_desc"></textarea></label>
+    <button class="btn" id="b_go"><svg class="i"><use href="#i-mega"/></svg>ابدأ البرودكاست</button>
+  </div><div class="card"><h3><svg class="i"><use href="#i-act"/></svg>التقدم</h3><div class="bar"><div id="b_bar"></div></div><div id="b_txt" class="sub">لا يوجد برودكاست شغال</div></div></div>
+</section>
+
+<section id="music"><div class="head"><div class="tile"><svg class="i"><use href="#i-music"/></svg></div><div><h1>الأغاني</h1><div class="sub">تشغيل مباشر من SoundCloud</div></div><span class="pill" id="m_node" style="margin-right:auto"></span></div>
+  <div class="card hero" id="m_card"><div class="np"><div class="art" id="m_art"><svg class="i"><use href="#i-music"/></svg></div><div class="info">
+    <h2 id="m_title">مفيش حاجة شغالة</h2><div class="sub" id="m_auth"></div>
+    <div class="bar" style="margin:14px 0 6px"><div id="m_bar"></div></div><div class="sub" id="m_time" style="direction:ltr;text-align:right"></div>
+    <div class="ctrls"><button class="ib" id="m_pause"><svg class="i"><use href="#i-pause"/></svg></button><button class="ib" id="m_skip"><svg class="i"><use href="#i-skip"/></svg></button><button class="ib" id="m_stop"><svg class="i"><use href="#i-stop"/></svg></button><button class="ib" id="m_loop"><svg class="i"><use href="#i-repeat"/></svg></button>
+      <svg class="i" style="margin-right:8px"><use href="#i-vol"/></svg><input type="range" id="m_vol" min="0" max="150" value="60"><span class="sub" id="m_vl" style="width:30px">60</span></div>
+  </div></div></div>
+  <div class="two"><div class="card"><h3><svg class="i"><use href="#i-play"/></svg>تشغيل</h3>
+    <label class="f"><span>الروم الصوتي</span><select id="m_vc"></select></label>
+    <label class="f"><span>اسم الأغنية أو رابط SoundCloud</span><input type="text" id="m_q"></label>
+    <button class="btn" id="m_go"><svg class="i"><use href="#i-play"/></svg>تشغيل</button>
+  </div><div class="card"><h3><svg class="i"><use href="#i-logs"/></svg>القايمة</h3><div id="m_queue"><div class="empty">القايمة فاضية</div></div></div></div>
+  <div class="card"><h3><svg class="i"><use href="#i-info"/></svg>التشخيص</h3>
+    <div class="sub" style="margin-bottom:10px">لو مفيش صوت: اختار روم، دوس <b>اختبار الصوت</b>. لو سمعت النغمة يبقى المشكلة في SoundCloud، ولو ماسمعتش شوف العلامات الحمرا تحت.</div>
+    <button class="btn" id="m_test" style="background:var(--s3);color:#fff"><svg class="i"><use href="#i-vol"/></svg>اختبار الصوت</button>
+    <div id="m_diag" style="margin-top:10px"></div><div class="logs" id="m_logs">—</div></div>
+</section>
+
+<section id="welcome"><div class="head"><div class="tile"><svg class="i"><use href="#i-heart"/></svg></div><div><h1>الترحيب</h1><div class="sub">رسالة وبنر لكل عضو جديد</div></div></div>
+  <img class="banner" id="w_img" alt="">
+  <div class="two"><div class="card">
+    <div class="row" style="padding-top:0"><div class="tile"><svg class="i"><use href="#i-heart"/></svg></div><div>تفعيل الترحيب<small>يبعت لما عضو جديد يدخل</small></div><label class="sw"><input type="checkbox" id="w_on"><i></i></label></div>
+    <div class="row"><div class="tile"><svg class="i"><use href="#i-img"/></svg></div><div>إرسال البنر<small>صورة فيها صورة العضو واسمه</small></div><label class="sw"><input type="checkbox" id="w_banner"><i></i></label></div>
+    <label class="f" style="margin-top:14px"><span>روم الترحيب</span><select id="w_ch"></select></label>
+    <label class="f"><span>رتبة تلقائية للأعضاء الجداد</span><select id="w_role"></select></label>
+  </div><div class="card">
+    <label class="f"><span>عنوان البنر</span><input type="text" id="w_title"></label>
+    <label class="f"><span>السطر الصغير في البنر</span><input type="text" id="w_line"></label>
+    <label class="f"><span>رسالة الترحيب</span><textarea id="w_text" style="min-height:80px"></textarea></label>
+    <div class="hint">المتغيرات: {user} منشن · {name} الاسم · {server} السيرفر · {count} عدد الأعضاء</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="w_save"><svg class="i"><use href="#i-save"/></svg>حفظ</button><button class="btn" id="w_test" style="background:var(--s3);color:#fff"><svg class="i"><use href="#i-send"/></svg>تجربة</button></div>
+  </div></div>
+</section>
+
+<section id="feedback"><div class="head"><div class="tile"><svg class="i"><use href="#i-star"/></svg></div><div><h1>التقييم</h1><div class="sub">العضو يكتب رأيه (وصورة اختيارية) ويختار النجوم، ويطلع كرت فيه اسمه وصورته والنجوم وكلامه</div></div></div>
+  <img class="banner" id="f_img" alt="">
+  <div class="two"><div class="card">
+    <div class="row" style="padding-top:0"><div class="tile"><svg class="i"><use href="#i-star"/></svg></div><div>تفعيل التقييم<small>أي رسالة في الروم دي تتحول لتقييم</small></div><label class="sw"><input type="checkbox" id="f_on"><i></i></label></div>
+    <label class="f" style="margin-top:14px"><span>روم استقبال الآراء</span><select id="f_ch"></select></label>
+    <label class="f"><span>روم نشر التقييم</span><select id="f_out"></select></label>
+    <label class="f"><span>كلمة الشكر فوق الكرت</span><input type="text" id="f_thanks"></label>
+    <button class="btn" id="f_save"><svg class="i"><use href="#i-save"/></svg>حفظ</button>
+  </div><div class="card"><h3><svg class="i"><use href="#i-info"/></svg>إزاي بيشتغل</h3>
+    <div class="sub" style="line-height:2">١. العضو يكتب رأيه في الروم (ويرفق صورة لو يبي) أو يستخدم <b>/rate</b>.<br>٢. البوت يرد عليه بأزرار النجوم من ١ لـ ٥.<br>٣. ينزل كرت فيه اسمه وصورته وعدد النجوم وكلام التقييم والصورة المرفقة.<br>٤. بعد تسليم طلب المتجر داخل التكت يطلع للعميل تقييم بنفس الكرت.</div>
+  </div></div>
+</section>
+
+<section id="boost"><div class="head"><div class="tile"><svg class="i"><use href="#i-zap"/></svg></div><div><h1>البوست</h1><div class="sub">رسالة وصورة تلقائية لما أحد يسوي بوست للسيرفر</div></div></div>
+  <img class="banner" id="bo_img" alt="">
+  <div class="two"><div class="card">
+    <div class="row" style="padding-top:0"><div class="tile"><svg class="i"><use href="#i-zap"/></svg></div><div>تفعيل رسالة البوست<small>تنرسل أول ما عضو يسوي بوست</small></div><label class="sw"><input type="checkbox" id="bo_on"><i></i></label></div>
+    <div class="row"><div class="tile"><svg class="i"><use href="#i-img"/></svg></div><div>إرسال الصورة<small>صورة فيها صورة العضو واسمه</small></div><label class="sw"><input type="checkbox" id="bo_banner"><i></i></label></div>
+    <label class="f" style="margin-top:14px"><span>روم البوست</span><select id="bo_ch"></select></label>
+  </div><div class="card">
+    <label class="f"><span>عنوان الصورة</span><input type="text" id="bo_title"></label>
+    <label class="f"><span>السطر الصغير في الصورة</span><input type="text" id="bo_line"></label>
+    <label class="f"><span>الرسالة</span><textarea id="bo_text" style="min-height:80px"></textarea></label>
+    <div class="hint">المتغيرات: {user} منشن · {name} الاسم · {server} السيرفر · {boosts} عدد البوستات · {count} عدد الأعضاء</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="bo_save"><svg class="i"><use href="#i-save"/></svg>حفظ</button><button class="btn" id="bo_test" style="background:var(--s3);color:#fff"><svg class="i"><use href="#i-send"/></svg>تجربة</button></div>
+  </div></div>
+</section>
+
+<section id="suggest"><div class="head"><div class="tile"><svg class="i"><use href="#i-bulb"/></svg></div><div><h1>الاقتراحات</h1><div class="sub">العضو يكتب اقتراحه، الأعضاء يصوتوا، والإدارة تقبل أو ترفض</div></div></div>
+  <div class="two"><div class="card">
+    <div class="row" style="padding-top:0"><div class="tile"><svg class="i"><use href="#i-bulb"/></svg></div><div>تفعيل الاقتراحات<small>أي رسالة في روم الاقتراحات تتحول لاقتراح، وكمان أمر /suggest</small></div><label class="sw"><input type="checkbox" id="g_on"><i></i></label></div>
+    <label class="f" style="margin-top:14px"><span>روم كتابة الاقتراحات</span><select id="g_ch"></select></label>
+    <label class="f"><span>روم نشر الاقتراحات</span><select id="g_out"></select></label>
+    <div class="row"><div class="tile"><svg class="i"><use href="#i-mail"/></svg></div><div>إشعار صاحب الاقتراح<small>رسالة خاصة لما الاقتراح يتقبل أو يترفض</small></div><label class="sw"><input type="checkbox" id="g_dm"><i></i></label></div>
+    <label class="f" style="margin-top:14px"><span>عنوان لوحة الاقتراحات</span><input type="text" id="g_pt"></label><label class="f"><span>نص اللوحة</span><textarea id="g_ptx" style="min-height:70px"></textarea></label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="g_save"><svg class="i"><use href="#i-save"/></svg>حفظ</button><button class="btn" id="g_panel" style="background:var(--s3);color:#fff"><svg class="i"><use href="#i-send"/></svg>إرسال لوحة الاقتراحات في روم الكتابة</button></div>
+  </div><div class="card"><h3><svg class="i"><use href="#i-info"/></svg>إزاي بيشتغل</h3>
+    <div class="sub" style="line-height:2">١. العضو يكتب اقتراحه في الروم، أو يضغط زر <b>اكتب اقتراحك</b> في اللوحة، أو /suggest.<br>٢. البوت ينشره كإمبيد في روم النشر مع أزرار 👍 👎.<br>٣. الإدارة تضغط قبول أو رفض وتكتب سبب لو حابة.<br>٤. صاحب الاقتراح بيوصله إشعار في الخاص.</div>
+  </div></div>
+  <div class="card"><h3><svg class="i"><use href="#i-msg"/></svg>آخر الاقتراحات</h3><div id="g_list"></div></div>
+</section>
+
+<section id="protect"><div class="head"><div class="tile"><svg class="i"><use href="#i-shield"/></svg></div><div><h1>الحماية</h1><div class="sub">تتطبق على الكل ماعدا اللي معاه صلاحية إدارة الرسائل</div></div></div>
+  <div class="card" id="p_list"></div>
+  <div class="two"><div class="card">
+    <div class="two"><label class="f"><span>حد السبام (5 ثواني)</span><input type="number" id="p_spamLimit" min="2"></label><label class="f"><span>حد الريد (10 ثواني)</span><input type="number" id="p_raidLimit" min="2"></label></div>
+  </div><div class="card"><label class="f"><span>الكلمات الممنوعة (كل كلمة في سطر)</span><textarea id="p_words"></textarea></label></div></div>
+  <button class="btn" id="p_save"><svg class="i"><use href="#i-save"/></svg>حفظ</button>
+</section>
+
+</main>
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const ic=n=>`<svg class="i"><use href="#i-${n}"/></svg>`;
+async function api(p,b){const r=await fetch('/api/'+p,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||'خطأ');return j}
+let tt;function toast(m,bad){const t=$('#toast');t.innerHTML=ic(bad?'x':'check')+'<span></span>';t.lastChild.textContent=m;t.className='show'+(bad?' bad':'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2600)}
+async function run(btn,fn,ok){btn.disabled=true;try{await fn();if(ok)toast(ok)}catch(e){toast(e.message,true)}btn.disabled=false}
+
+const tabs=[['overview','نظرة عامة','home'],['send','إرسال رسالة','send'],['broadcast','برودكاست','mega'],['music','الأغاني','music'],['welcome','الترحيب','heart'],['feedback','التقييم','star'],['boost','البوست','zap'],['suggest','الاقتراحات','bulb'],['protect','الحماية','shield']];
+tabs.forEach(([id,n,i],k)=>{const b=document.createElement('button');b.innerHTML=ic(i)+'<span>'+n+'</span>';b.dataset.t=id;b.style.animationDelay=k*70+'ms';b.onclick=()=>show(id);$('#nav').append(b)});
+let mt,lt;
+function show(id){$$('section').forEach(s=>s.classList.toggle('on',s.id===id));$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===id));clearTimeout(mt);clearTimeout(lt);if(id==='music')mpoll();closePick();if(id==='welcome'||id==='feedback'||id==='boost')imgs();if(id==='suggest')sgload();setMenu(false);$('#tt').textContent=(tabs.find(t=>t[0]===id)||[])[1]||'';location.hash=id}
+function setMenu(o){document.body.classList.toggle('menu',o);$('#bg_btn').setAttribute('aria-expanded',o)}
+$('#bg_btn').onclick=()=>setMenu(!document.body.classList.contains('menu'));$('#bg').onclick=()=>setMenu(false);document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
+
+
+const prot=[['invites','منع روابط الدعوات','يحذف أي رابط سيرفر ديسكورد','mail'],['links','منع الروابط','يحذف أي رابط','link'],['spam','منع السبام','إسكات دقيقة عند التكرار السريع','zap'],['badwords','الكلمات الممنوعة','حسب القائمة تحت','ban'],['raid','حماية الريد','طرد الداخلين عند الدخول الجماعي','alert']];
+$('#p_list').innerHTML=prot.map(p=>`<div class="row"><div class="tile">${ic(p[3])}</div><div>${p[1]}<small>${p[2]}</small></div><label class="sw"><input type="checkbox" id="p_${p[0]}"><i></i></label></div>`).join('');
+
+let EM=[];const UNI='🎫 🆘 ❓ 💬 📩 🛠️ 🐞 ⚠️ 🔒 💡 📌 🎮 💰 ✅ ❌ 🔥 ⭐ 🎁 📢 👋 🛡️ 🤝 😀 😎 ❤️ 🎵 📝 🔔 👑'.split(' ');
+const EMR=/<(a?):(\w+):(\d+)>/g;
+const emoUrl=(a,id)=>`https://cdn.discordapp.com/emojis/${id}.${a?'gif':'png'}?size=48`;
+const escH=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function emoHtml(v){if(!v)return'';const m=/^<(a?):(\w+):(\d+)>$/.exec(v);return m?`<img class="e" src="${emoUrl(m[1],m[3])}" alt="">`:`<span>${escH(v)}</span>`}
+function rich(el,text){let last=0,m;EMR.lastIndex=0;while((m=EMR.exec(text))){el.append(text.slice(last,m.index));const im=document.createElement('img');im.className='e';im.src=emoUrl(m[1],m[3]);el.append(im);last=m.index+m[0].length}el.append(text.slice(last))}
+function closePick(){$('#pk')?.remove()}
+function pick(anchor,cb,clearable){
+  closePick();const p=document.createElement('div');p.id='pk';
+  const mkb=(html,v)=>{const b=document.createElement('button');b.type='button';b.innerHTML=html;b.onclick=e=>{e.stopPropagation();cb(v);closePick()};return b};
+  const sec=(t,items)=>{const h=document.createElement('div');h.className='pk-h';h.textContent=t;const g=document.createElement('div');g.className='pk-g';items.forEach(x=>g.append(x));p.append(h,g)};
+  sec('إيموجيات السيرفر',EM.length?EM.map(e=>mkb(`<img class="e" src="${emoUrl(e.animated,e.id)}" title="${e.name}">`,`<${e.animated?'a':''}:${e.name}:${e.id}>`)):[Object.assign(document.createElement('span'),{className:'sub',textContent:'مفيش إيموجيات في السيرفر'})]);
+  sec('إيموجي عادي',UNI.map(u=>mkb(u,u)));
+  if(clearable)sec('',[mkb(ic('x')+' ',''),]);
+  document.body.append(p);
+  const r=anchor.getBoundingClientRect();p.style.top=Math.max(10,Math.min(r.bottom+8,innerHeight-p.offsetHeight-10))+'px';p.style.left=Math.max(10,Math.min(r.left,innerWidth-p.offsetWidth-10))+'px';
+}
+document.addEventListener('click',e=>{if(!e.target.closest('#pk')&&!e.target.closest('[data-pick]'))closePick()});
+function insertAt(ta,v){const s=ta.selectionStart??ta.value.length;ta.value=ta.value.slice(0,s)+v+ta.value.slice(ta.selectionEnd??s);ta.focus();ta.dispatchEvent(new Event('input'))}
+$('#s_emo').onclick=e=>pick(e.currentTarget,v=>insertAt($('#s_desc'),v));
+
+function opts(sel,list,empty){const el=$(sel);el.replaceChildren();if(empty){const o=document.createElement('option');o.value='';o.textContent=empty;el.append(o)}list.forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name;el.append(o)})}
+function count(el,to){const t0=performance.now();(function f(t){const p=Math.min((t-t0)/700,1);el.textContent=Math.round(to*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f)})(t0)}
+
+const mode={s:'embed',b:'embed'};
+
+async function load(){
+  try{
+    const s=await api('state');
+    $('#gn').textContent=s.guild.name;if(s.guild.icon){const im=document.createElement('img');im.src=s.guild.icon;$('#ic').replaceChildren(im)}
+    $$('[data-k]').forEach(e=>count(e,s.guild[e.dataset.k]));EM=s.emojis||[];
+    opts('#s_ch',s.text);opts('#m_vc',s.voice);
+    opts('#b_role',s.roles,'كل الأعضاء');
+    const p=s.db.protection;
+    prot.forEach(x=>$('#p_'+x[0]).checked=p[x[0]]);
+    $('#p_spamLimit').value=p.spamLimit;$('#p_raidLimit').value=p.raidLimit;$('#p_words').value=p.words.join('\n');
+    opts('#w_ch',s.text,'بدون');opts('#w_role',s.roles,'بدون');opts('#f_ch',s.text,'بدون');opts('#f_out',s.text,'نفس الروم');opts('#bo_ch',s.text,'بدون');opts('#g_ch',s.text,'بدون');opts('#g_out',s.text,'نفس الروم');
+    const W=s.db.welcome,Fb=s.db.feedback;
+    $('#w_on').checked=W.enabled;$('#w_banner').checked=W.banner;$('#w_ch').value=W.channel;$('#w_role').value=W.role;$('#w_title').value=W.title;$('#w_line').value=W.line;$('#w_text').value=W.text;
+    const Bo=s.db.boost;$('#bo_on').checked=Bo.enabled;$('#bo_banner').checked=Bo.banner!==false;$('#bo_ch').value=Bo.channel;$('#bo_title').value=Bo.title;$('#bo_line').value=Bo.line;$('#bo_text').value=Bo.text;
+    $('#f_on').checked=Fb.enabled;$('#f_ch').value=Fb.channel;$('#f_out').value=Fb.outChannel;$('#f_thanks').value=Fb.thanks;
+    const Sg=s.db.suggest;$('#g_on').checked=Sg.enabled;$('#g_ch').value=Sg.channel;$('#g_out').value=Sg.outChannel;$('#g_dm').checked=Sg.dm!==false;$('#g_pt').value=Sg.panelTitle||'';$('#g_ptx').value=Sg.panelText||'';
+  }catch(e){toast(e.message,true)}
+}
+
+function vis(g){const m=mode[g];$$(g==='s'?'[data-show]:not([data-for])':'[data-for="b"]').forEach(e=>e.style.display=e.dataset.show.split(' ').includes(m)?'':'none')}
+$$('[data-seg]').forEach(g=>g.onclick=e=>{const b=e.target.closest('button');if(!b)return;const k=g.dataset.seg;mode[k]=b.dataset.m;[...g.children].forEach(x=>x.classList.toggle('on',x===b));{vis(k);prev()}});
+function prev(){
+  const m=mode.s,pv=$('#s_pv'),T=m!=='text';
+  pv.className='pv'+(m==='text'?' txt':m==='v2'?' v2':'');pv.style.borderRightColor=$('#s_color').value;pv.replaceChildren();
+  const add=(tag,txt,cls)=>{const e=document.createElement(tag);rich(e,txt);if(cls)e.className=cls;pv.append(e);return e};
+  if(T&&$('#s_title').value)add('h4',$('#s_title').value);
+  if(m==='v2'&&$('#s_title').value)pv.append(document.createElement('hr'));
+  add('div',$('#s_desc').value||'...');
+  const u=$('#s_image').value.trim();if(T&&/^https?:\/\//.test(u)){const im=document.createElement('img');im.src=u;pv.append(im)}
+  if(T&&$('#s_footer').value)add('small',$('#s_footer').value);
+  if(m==='v2'&&$('#s_bl').value){const l=add('div',$('#s_bl').value,'lb');l.insertAdjacentHTML('afterbegin',ic('link'))}
+}
+['s_title','s_desc','s_color','s_footer','s_image','s_bl','s_bu'].forEach(i=>$('#'+i).oninput=prev);
+
+$('#s_go').onclick=e=>run(e.target,()=>api('send',{channel:$('#s_ch').value,mode:mode.s,title:$('#s_title').value,desc:$('#s_desc').value,color:$('#s_color').value,footer:$('#s_footer').value,image:$('#s_image').value,btnLabel:$('#s_bl').value,btnUrl:$('#s_bu').value}),'تم الإرسال');
+$('#b_go').onclick=e=>run(e.target,async()=>{await api('broadcast',{role:$('#b_role').value,mode:mode.b,title:$('#b_title').value,desc:$('#b_desc').value});poll()},'بدأ البرودكاست');
+$('#p_save').onclick=e=>run(e.target,()=>{const d={spamLimit:+$('#p_spamLimit').value||5,raidLimit:+$('#p_raidLimit').value||6,words:$('#p_words').value.split('\n').map(x=>x.trim()).filter(Boolean)};prot.forEach(x=>d[x[0]]=$('#p_'+x[0]).checked);return api('config',{section:'protection',data:d})},'تم الحفظ');
+
+const imgs=()=>{$('#w_img').src='/api/preview/welcome?'+Date.now();$('#f_img').src='/api/preview/feedback?'+Date.now();$('#bo_img').src='/api/preview/boost?'+Date.now()};
+const boData=()=>({enabled:$('#bo_on').checked,banner:$('#bo_banner').checked,channel:$('#bo_ch').value,title:$('#bo_title').value,line:$('#bo_line').value,text:$('#bo_text').value});
+$('#bo_save').onclick=e=>run(e.target,async()=>{await api('config',{section:'boost',data:boData()});imgs()},'تم الحفظ');
+$('#bo_test').onclick=e=>run(e.target,async()=>{await api('config',{section:'boost',data:boData()});await api('boost/test',{})},'اتبعتت رسالة تجربة');
+$('#g_panel').onclick=e=>run(e.target,async()=>{await api('config',{section:'suggest',data:{enabled:$('#g_on').checked,channel:$('#g_ch').value,outChannel:$('#g_out').value,dm:$('#g_dm').checked,panelTitle:$('#g_pt').value,panelText:$('#g_ptx').value}});if(!$('#g_ch').value)throw new Error('اختار روم كتابة الاقتراحات الأول');await api('suggest/panel',{channel:$('#g_ch').value})},'اتبعتت لوحة الاقتراحات');
+$('#w_save').onclick=e=>run(e.target,async()=>{await api('config',{section:'welcome',data:{enabled:$('#w_on').checked,banner:$('#w_banner').checked,channel:$('#w_ch').value,role:$('#w_role').value,title:$('#w_title').value,line:$('#w_line').value,text:$('#w_text').value}});imgs()},'تم الحفظ');
+$('#w_test').onclick=e=>run(e.target,async()=>{await api('config',{section:'welcome',data:{channel:$('#w_ch').value,banner:$('#w_banner').checked,title:$('#w_title').value,line:$('#w_line').value,text:$('#w_text').value}});await api('welcome/test',{})},'اتبعتت رسالة تجربة');
+$('#f_save').onclick=e=>run(e.target,async()=>{await api('config',{section:'feedback',data:{enabled:$('#f_on').checked,channel:$('#f_ch').value,outChannel:$('#f_out').value,thanks:$('#f_thanks').value}});imgs()},'تم الحفظ');
+$('#g_save').onclick=e=>run(e.target,async()=>{await api('config',{section:'suggest',data:{enabled:$('#g_on').checked,channel:$('#g_ch').value,outChannel:$('#g_out').value,dm:$('#g_dm').checked,panelTitle:$('#g_pt').value,panelText:$('#g_ptx').value}})},'تم الحفظ');
+const SGT={pending:'معلّق',accepted:'مقبول',rejected:'مرفوض'};
+async function sgload(){try{const l=await api('suggestions'),b=$('#g_list');b.replaceChildren();if(!l.length){const d=document.createElement('div');d.className='sub';d.textContent='مفيش اقتراحات لسه';b.append(d);return}l.forEach(x=>{const r=document.createElement('div');r.className='sg';const m=document.createElement('div'),p=document.createElement('p'),sm=document.createElement('small'),st=document.createElement('span');p.textContent='#'+x.n+' — '+x.text;sm.textContent=x.user+' • 👍 '+x.up+' • 👎 '+x.down;st.className='st '+x.status;st.textContent=SGT[x.status]||x.status;m.append(p,sm);r.append(m,st);b.append(r)})}catch(e){toast(e.message,true)}}
+let pt;async function poll(){clearTimeout(pt);try{const b=await api('bc');const p=b.total?Math.round((b.sent+b.failed)/b.total*100):0;$('#b_bar').style.width=p+'%';$('#b_txt').textContent=b.total?`تم ${b.sent} • فشل ${b.failed} • من ${b.total}`:'لا يوجد برودكاست شغال';if(b.running)pt=setTimeout(poll,1500)}catch{}}
+
+const mfmt=ms=>{const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const mctl=(a,v)=>api('music/ctl',{action:a,value:v}).then(mpoll).catch(e=>toast(e.message,true));
+$('#m_pause').onclick=()=>mctl('pause');$('#m_skip').onclick=()=>mctl('skip');$('#m_stop').onclick=()=>mctl('stop');$('#m_loop').onclick=()=>mctl('loop');
+$('#m_vol').onchange=e=>mctl('volume',e.target.value);$('#m_vol').oninput=e=>$('#m_vl').textContent=e.target.value;
+const mplay=e=>run($('#m_go'),async()=>{const r=await api('music/play',{voice:$('#m_vc').value,query:$('#m_q').value});$('#m_q').value='';toast('تمت الإضافة: '+r.title);mpoll()});
+$('#m_go').onclick=mplay;$('#m_q').onkeydown=e=>{if(e.key==='Enter')mplay()};
+function renderMusic(m){
+  $('#m_node').innerHTML=`<span class="dot" style="${m.node?'':'animation:none;background:#555'}"></span>`+(m.node?'SoundCloud جاهز':'ffmpeg مش موجود');
+  const c=m.cur,art=$('#m_art'),card=$('#m_card');
+  if(c&&c.art){if(card.dataset.u!==c.art){card.style.setProperty('--bg-art','url('+JSON.stringify(c.art)+')');card.dataset.u=c.art;card.classList.add('has')}}else{card.classList.remove('has');card.dataset.u=''}
+  $('#m_title').textContent=c?c.title:'مفيش حاجة شغالة';$('#m_auth').textContent=c?c.author:'ابحث عن أغنية من SoundCloud وشغلها';
+  if(c&&c.art){if(art.dataset.u!==c.art){const im=document.createElement('img');im.src=c.art;art.replaceChildren(im);art.dataset.u=c.art}}else if(art.dataset.u!==''){art.innerHTML=ic('music');art.dataset.u=''}
+  $('#m_bar').style.width=c&&c.dur?Math.min(100,m.pos/c.dur*100)+'%':'0';$('#m_time').textContent=c?mfmt(m.pos)+' / '+mfmt(c.dur):'';
+  $('#m_pause').innerHTML=ic(m.paused?'play':'pause');$('#m_loop').classList.toggle('on',m.loop!=='off');$('#m_loop').title=m.loop;
+  if(document.activeElement!==$('#m_vol'))$('#m_vol').value=m.volume;$('#m_vl').textContent=m.volume;
+  const q=$('#m_queue');q.replaceChildren();
+  if(!m.queue.length){q.innerHTML='<div class="empty">القايمة فاضية</div>';return}
+  m.queue.forEach((t,k)=>{const r=document.createElement('div');r.className='q';const n=document.createElement('b');n.textContent=k+1;const a=document.createElement('div');a.textContent=t.title;const d=document.createElement('span');d.textContent=mfmt(t.dur||0);r.append(n,a,d);q.append(r)});
+}
+function renderDiag(d){
+  const box=$('#m_diag');box.replaceChildren();
+  d.items.forEach(x=>{const r=document.createElement('div');r.className='row';r.style.padding='9px 0';
+    const t=document.createElement('div');t.className='tile';t.style.cssText='width:32px;height:32px;border-radius:10px';t.innerHTML=ic(x.ok===null?'info':x.ok?'check':'x');
+    if(x.ok===false)t.style.background='#2a1212';
+    const n=document.createElement('div');n.textContent=x.name;const s=document.createElement('small');s.textContent=x.note||'';n.append(s);r.append(t,n);box.append(r)});
+  $('#m_logs').textContent=d.logs.length?d.logs.join('\n'):'—';
+}
+$('#m_test').onclick=e=>run(e.target,()=>api('music/test',{voice:$('#m_vc').value}),'شغّلت نغمة 3 ثواني — سمعتها؟');
+async function mpoll(){clearTimeout(mt);try{renderMusic(await api('music'));renderDiag(await api('music/diag'))}catch{}mt=setTimeout(mpoll,2000)}
+
+vis('s');vis('b');prev();load();poll();show(tabs.some(t=>t[0]===location.hash.slice(1))?location.hash.slice(1):'overview');
+</script>
+<script src="void.js"></script>
+</body>
+</html>
