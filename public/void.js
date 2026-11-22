@@ -128,7 +128,7 @@ mkTab('vtickets', 'التكت المتقدم', 'طلب ← قبول/رفض ← �
       E('div', { class: 'card' }, E('h3', { html: ic('img') + 'الصور' }), imgCard('panel', 'صورة اللوحة'), imgCard('request', 'صورة الطلب'))),
     E('div', { class: 'card', style: 'margin-top:16px' }, E('h3', { html: ic('ticket') + 'الأقسام (حد أقصى 24)' }), catsBox,
       btn('إضافة قسم', 'plus', async () => { if (c.categories.length >= 24) throw new Error('وصلت الحد'); c.categories.push({ id: '', name: '', description: '', emoji: '', roleId: null }); drawCats(); }, ghost)),
-    E('div', { class: 'card', style: 'margin-top:16px' }, E('h3', { html: ic('msg') + 'النصوص' }), E('div', { class: 'hint' }, 'المتغيرات: {user} {number} {category} {staff} {ticket} {admin} — اتركها فاضية للنص الافتراضي'),
+    E('div', { class: 'card', style: 'margin-top:16px' }, E('h3', { html: ic('msg') + 'النصوص' }), row('msg', 'رسالة التكت بدون إمبيد', 'تنرسل كرسالة عادية بدل الإمبيد والصورة (الأزرار نفسها)', toggle(!!c.ticketNoEmbed, v => c.ticketNoEmbed = v)), E('div', { class: 'hint' }, 'المتغيرات: {user} {number} {category} {staff} {ticket} {admin} — اتركها فاضية للنص الافتراضي'),
       area('panelText', 'نص اللوحة'), area('requestText', 'نص الطلب'), area('ticketText', 'نص داخل التكت'), area('acceptedText', 'رسالة الخاص عند القبول'), area('pointText', 'رسالة الخاص عند النقطة')),
     E('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:16px' },
       btn('حفظ', 'save', async () => { await post('v/tickets', c); toast('انحفظت الإعدادات'); }),
@@ -282,9 +282,11 @@ mkTab('vstore', 'المتجر', 'المنتجات والأسعار والكوب�
   const exCard = E('div', { class: 'card' }, E('h3', { html: ic('file') + 'الفواتير والضمان والتقارير' }),
     row('file', 'إرسال فاتورة عند تأكيد الدفع', 'داخل التكت + ملف HTML + لوق الطلبات', toggle(c.invoiceEnabled, v => c.invoiceEnabled = v)),
     row('mail', 'إرسال الفاتورة في الخاص', 'نسخة للعميل في الخاص', toggle(c.invoiceDm, v => c.invoiceDm = v)),
+    row('bot', 'تسليم ملف البوت تلقائياً بعد تأكيد الدفع', 'المنتج اللي له ملف يتسلّم في التكت والخاص، ولو كل الطلب له ملفات يتحول «تم التسليم» تلقائي', toggle(c.autoDeliverFiles, v => c.autoDeliverFiles = v)),
     row('shield', 'الضمان بعد التسليم', 'العميل يشوفه من /warranty ويوصله تنبيه قبل الانتهاء', toggle(c.warrantyEnabled, v => c.warrantyEnabled = v)),
     E('div', { class: 'g4', style: 'margin-top:12px' }, tin('storeName', 'اسم المتجر في الفاتورة'), nin('warrantyDays', 'أيام الضمان', 1, 365, 1), nin('warrantyRemindHours', 'تنبيه قبل الانتهاء (ساعات)', 1, 720, 1), tin('currency', 'رمز العملة للأرباح', 'ر.س')),
     E('div', { class: 'g4' }, nin('saleValue', 'سعر بيع شهر نيترو', 0), nin('costValue', 'تكلفة شهر نيترو', 0), nin('reportIntervalDays', 'تقرير تلقائي كل (أيام، 0 = إيقاف)', 0, 90, 1), E('div')),
+    (() => { const t = E('textarea', { style: 'min-height:70px' }); t.value = c.botFileMsg || ''; t.oninput = () => c.botFileMsg = t.value; return field('رسالة تسليم ملف البوت', t); })(),
     field('روم التقرير التلقائي', sel(chans(), c.reportChannel, v => c.reportChannel = v, 'بدون')), E('div', { class: 'hint' }, 'تقرير يدوي: /report — وفاتورة: /invoice — وضمانك: /warranty'));
 
   // معدلات الدفع
@@ -305,13 +307,23 @@ mkTab('vstore', 'المتجر', 'المنتجات والأسعار والكوب�
       const mo = E('input', { type: 'number', min: 0, step: 'any' }); mo.value = x.months; mo.oninput = () => x.months = Number(mo.value) || 0;
       const ct = E('select'); Object.entries(r.cats).forEach(([v, n]) => ct.append(E('option', { value: v }, n))); ct.value = x.category; ct.onchange = () => x.category = ct.value;
       const del = E('button', { class: 'ib', type: 'button', html: ic('trash') }); del.onclick = () => { P.splice(k, 1); drawP(); };
-      return E('div', { class: 'srow' }, em, nm, mo, ct, toggle(x.active !== false, v => x.active = v), del);
+      // ملف البوت: اسم + رفع ملف، يتسلّم للعميل تلقائياً بعد تأكيد الدفع
+      const bn = E('input', { type: 'text', placeholder: 'اسم البوت عند التسليم (اختياري)' }); bn.value = x.botName || ''; bn.oninput = () => x.botName = bn.value;
+      const fileRow = E('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-2px 0 12px;padding:8px 10px;border:1px dashed var(--line);border-radius:12px' }, E('span', {}, '📦'), bn);
+      if (x.id > 0) {
+        const up = E('input', { type: 'file', style: 'display:none' });
+        up.onchange = async () => { const f = up.files[0]; if (!f) return; if (f.size > 25 * 1024 * 1024) return toast('الملف أكبر من 25MB', true); try { const res = await fetch('/api/v/store/botfile?id=' + x.id + '&name=' + encodeURIComponent(f.name), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f }); const j = await res.json(); if (!res.ok) throw new Error(j.error || 'فشل الرفع'); x.file = j.file; toast('انرفع الملف'); drawP(); } catch (e) { toast(e.message, true); } };
+        const pick = E('button', { class: 'btn', type: 'button', style: ghost }, x.file ? 'استبدال الملف' : 'رفع ملف البوت'); pick.onclick = () => up.click();
+        fileRow.append(E('span', { class: 'tag' }, x.file ? `${x.file.name} • ${(x.file.size / 1024).toFixed(0)}KB` : 'بدون ملف'), pick, up);
+        if (x.file) { const rm = E('button', { class: 'btn', type: 'button', style: ghost + ';color:#ff6b6b' }, 'حذف الملف'); rm.onclick = async () => { await post('v/store/botfile/delete', { id: x.id }); x.file = null; drawP(); }; fileRow.append(rm); }
+      } else fileRow.append(E('span', { class: 'sub' }, 'احفظ المنتجات أول ثم ارفع الملف'));
+      return E('div', {}, E('div', { class: 'srow' }, em, nm, mo, ct, toggle(x.active !== false, v => x.active = v), del), fileRow);
     }));
   }; drawP();
   const pCard = E('div', { class: 'card' }, E('h3', { html: ic('panel') + 'المنتجات والأسعار (بأشهر النيترو)' }),
     E('div', { class: 'hint' }, 'الإيموجي · الاسم · عدد الأشهر · القسم · مفعّل. الباقات اختر لها قسم "الباقات".'), pBox,
     E('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, btn('إضافة منتج', 'plus', async () => { P.push({ id: 0, category: 'basic', name: '', months: 1, emoji: '🤖', active: true }); drawP(); }, ghost),
-      btn('حفظ المنتجات', 'save', async () => { await post('v/store/products', { list: P }); toast('انحفظت المنتجات'); })));
+      btn('حفظ المنتجات', 'save', async () => { await post('v/store/products', { list: P }); toast('انحفظت المنتجات'); load(); })));
 
   // الكوبونات
   const cBox = E('div'), drawC = () => {
