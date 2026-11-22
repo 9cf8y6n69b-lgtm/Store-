@@ -210,6 +210,34 @@ async function panelCard({ title, sub, chips }) {
   cs.forEach(t => { const w = ctx.measureText(t).width + 40; rrect(ctx, cx - w, 366, w, 44, 22); ctx.fillStyle = 'rgba(155,107,255,0.20)'; ctx.fill(); ctx.strokeStyle = 'rgba(176,132,255,0.6)'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#efe7ff'; ctx.textAlign = 'center'; ctx.fillText(t, cx - w / 2, 389); ctx.textAlign = 'right'; cx -= w + 12; });
   return c.toBuffer('image/png');
 }
+
+// ─────────────── صور القوانين والسياسات: عنوان + بنود مرقمة ───────────────
+async function infoCard({ title, sub, items, footer }) {
+  if (!CV) return null;
+  const W = 1100, PAD = 70, TW = W - PAD * 2 - 90, LH = 40;
+  const probe = CV.createCanvas(10, 10).getContext('2d'); probe.direction = 'rtl';
+  const rows = (items || []).map(it => { probe.font = F(32); const h = it.h ? [it.h] : []; probe.font = F(26); const t = wrapLines(probe, it.t || '', TW, 4); return { h: it.h || '', t, hh: (it.h ? 46 : 0) + t.length * LH + 30 }; });
+  const top = 230, H = top + rows.reduce((s, r) => s + r.hh, 0) + 120;
+  const c = CV.createCanvas(W, H), ctx = c.getContext('2d');
+  ctx.fillStyle = '#120b20'; ctx.fillRect(0, 0, W, H);
+  const bg = await bgImage(); if (bg) { const k = Math.max(W / bg.width, H / bg.height); ctx.drawImage(bg, (W - bg.width * k) / 2, (H - bg.height * k) / 2, bg.width * k, bg.height * k); }
+  let g = ctx.createRadialGradient(W * 0.5, 0, 10, W * 0.5, 0, 700); g.addColorStop(0, 'rgba(160,100,255,0.32)'); g.addColorStop(1, 'rgba(160,100,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  panelBorder(ctx, W, H, 44); headerNova(ctx, W, 66);
+  ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = F(64); ctx.fillText(String(title || ''), W / 2, 150, W - 160);
+  ctx.direction = 'ltr'; ctx.fillStyle = '#b9a8e6'; ctx.font = '700 22px CairoLat, sans-serif'; if ('letterSpacing' in ctx) ctx.letterSpacing = '8px'; ctx.fillText(String(sub || ''), W / 2, 200); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  let y = top; ctx.direction = 'rtl';
+  rows.forEach((r, n) => {
+    rrect(ctx, PAD, y, W - PAD * 2, r.hh - 12, 22); ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill(); ctx.strokeStyle = 'rgba(176,132,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+    const cx = W - PAD - 42, cy = y + 38; const gg = ctx.createLinearGradient(cx - 24, cy - 24, cx + 24, cy + 24); gg.addColorStop(0, '#9b6bff'); gg.addColorStop(1, '#ff8fd8'); ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(cx, cy, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#120b20'; ctx.font = F(26); ctx.textAlign = 'center'; ctx.fillText(String(n + 1), cx, cy + 1);
+    ctx.textAlign = 'right'; let ty = y + 38; const tx = W - PAD - 90;
+    if (r.h) { ctx.fillStyle = '#ffffff'; ctx.font = F(32); ctx.fillText(r.h, tx, ty, TW); ty += 46; }
+    ctx.fillStyle = '#d9ccf5'; ctx.font = F(26); r.t.forEach((l, i) => ctx.fillText(l, tx, ty + (r.h ? 0 : 0) + i * LH, TW));
+    y += r.hh;
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#c4a8ff'; ctx.font = F(26); ctx.fillText(String(footer || ''), W / 2, H - 56, W - 140);
+  return c.toBuffer('image/png');
+}
 async function boostBanner(o) { return welcomeBanner(o); }
 
 const ICONS = ['ico_play', 'ico_pause', 'ico_skip', 'ico_stop', 'ico_loop', 'ico_loop1', 'ico_vdn', 'ico_vup', 'ico_star'];
@@ -237,4 +265,4 @@ function icon(name) {
   }
   return c.toBuffer('image/png');
 }
-module.exports = { available, welcomeBanner, feedbackBanner, reviewCard, boostBanner, panelCard, icon, ICONS, asset, cleanDesign, DEFAULT_DESIGN };
+module.exports = { available, welcomeBanner, feedbackBanner, reviewCard, boostBanner, panelCard, infoCard, icon, ICONS, asset, cleanDesign, DEFAULT_DESIGN };
