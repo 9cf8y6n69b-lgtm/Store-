@@ -22,9 +22,13 @@ const DEFAULT_CFG = {
     pointsPaid: 1, pointsDeliver: 2, customerRole: "", logChannel: "",
     storeName: "NOVA STORE", invoiceEnabled: true, invoiceDm: false, warrantyEnabled: true, warrantyDays: 7, warrantyRemindHours: 24,
     reportChannel: "", reportIntervalDays: 0, saleValue: 0, costValue: 0, currency: "",
+    autoDeliverFiles: true, botFileMsg: "📦 هذا ملف بوتك. فك الضغط وشغّله حسب التعليمات، ولو احتجت مساعدة اكتب هنا في التكت.",
     rates: DEF.rates, payInfo: DEF.payInfo
 };
 
+const path = require("path"), fs = require("fs");
+const FILES_DIR = path.join(process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "..", "..", "data"), "botfiles");
+const filePath = f => (f && f.stored ? path.join(FILES_DIR, f.stored) : "");
 const fmt = n => (Math.round(Number(n) * 100) / 100).toLocaleString("en-US");
 
 function cfg() {
@@ -47,7 +51,9 @@ function saveProducts(list) {
         name: String(p.name || "").trim().slice(0, 60) || "منتج",
         months: Math.max(0, Math.min(1000, Number(p.months) || 0)),
         emoji: String(p.emoji || "🤖").slice(0, 60),
-        active: p.active !== false
+        active: p.active !== false,
+        botName: String(p.botName || "").trim().slice(0, 60),
+        file: p.file && /^[\w.\-]{1,120}$/.test(p.file.stored || "") ? { name: String(p.file.name || p.file.stored).slice(0, 100), stored: p.file.stored, size: Number(p.file.size) || 0 } : null
     }));
     Pro.set(K.prods, out); return out;
 }
@@ -119,6 +125,6 @@ function stats() {
 }
 
 module.exports = {
-    PAY, CAT, STATUS, COLOR, fmt, cfg, setCfg, products, activeProducts, saveProducts, price, totalMonths, amountFor, payInfo, pricesEmbed,
+    PAY, CAT, STATUS, COLOR, FILES_DIR, filePath, fmt, cfg, setCfg, products, activeProducts, saveProducts, price, totalMonths, amountFor, payInfo, pricesEmbed,
     getOrder, saveOrder, newOrder, listOrders, userOrders, openOrdersOf, byChannel, coupons, saveCoupons, useCoupon, addStaffPoints, topStaff, stats
 };

@@ -16,7 +16,7 @@ const MAX_IMAGE = 3 * 1024 * 1024;
 const DEFAULTS = guildId => ({
     guildId, panelChannelId: null, requestChannelId: null, ticketCategoryId: null,
     reviewerRoleIds: [], transferRoleIds: [], categories: [], panelImagePath: null, requestImagePath: null,
-    panelText: "", requestText: "", ticketText: "", acceptedText: "", pointText: ""
+    panelText: "", requestText: "", ticketText: "", acceptedText: "", pointText: "", ticketNoEmbed: false
 });
 
 const load = guildId => ({ ...DEFAULTS(guildId), ...(TS.getConfig(guildId) || {}) });
