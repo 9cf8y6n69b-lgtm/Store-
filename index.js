@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || ''; // يقبل اسم المتغير TOKEN أو DISCORD_TOKEN أو BOT_TOKEN
 const fs = require('fs'), path = require('path'), express = require('express');
 const { spawn, spawnSync } = require('child_process');
 const { Transform } = require('stream');
