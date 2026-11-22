@@ -83,7 +83,7 @@ function mount(app, { client, gld, db, save, h }) {
         TA.save(g.id, {
             ...cur, reviewerRoleIds: roles, transferRoleIds: transferRoles, categories: cats,
             panelChannelId: b.panelChannelId || null, requestChannelId: b.requestChannelId || null, ticketCategoryId: b.ticketCategoryId || null,
-            panelText: txt("panelText"), requestText: txt("requestText"), ticketText: txt("ticketText"), acceptedText: txt("acceptedText"), pointText: txt("pointText")
+            ticketNoEmbed: !!b.ticketNoEmbed, panelText: txt("panelText"), requestText: txt("requestText"), ticketText: txt("ticketText"), acceptedText: txt("acceptedText"), pointText: txt("pointText")
         });
     }));
     app.post("/api/v/tickets/send", h(async b => {

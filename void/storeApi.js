@@ -1,5 +1,6 @@
 // واجهة الداشبورد للمتجر: الإعدادات، المنتجات، الكوبونات، الطلبات
 const St = require("./utils/store");
+const express = require("express"), fs = require("fs"), path = require("path");
 const idOk = v => /^\d{15,25}$/.test(String(v || ""));
 
 function mount(app, { client, gld, h }) {
@@ -24,11 +25,33 @@ function mount(app, { client, gld, h }) {
             pointsPaid: num(c.pointsPaid, old.pointsPaid, 0, 100), pointsDeliver: num(c.pointsDeliver, old.pointsDeliver, 0, 100),
             customerRole: idOk(c.customerRole) && g.roles.cache.has(c.customerRole) ? c.customerRole : "",
             logChannel: idOk(c.logChannel) && g.channels.cache.has(c.logChannel) ? c.logChannel : "", rates, payInfo,
+            autoDeliverFiles: !!c.autoDeliverFiles, botFileMsg: String(c.botFileMsg || old.botFileMsg).slice(0, 800),
             storeName: String(c.storeName || "NOVA STORE").slice(0, 40), invoiceEnabled: !!c.invoiceEnabled, invoiceDm: !!c.invoiceDm, warrantyEnabled: !!c.warrantyEnabled,
             warrantyDays: num(c.warrantyDays, old.warrantyDays, 1, 365), warrantyRemindHours: num(c.warrantyRemindHours, old.warrantyRemindHours, 1, 720),
             reportChannel: idOk(c.reportChannel) && g.channels.cache.has(c.reportChannel) ? c.reportChannel : "", reportIntervalDays: num(c.reportIntervalDays, 0, 0, 90),
             saleValue: num(c.saleValue, 0, 0, 1e9), costValue: num(c.costValue, 0, 0, 1e9), currency: String(c.currency || "").slice(0, 12)
         });
+    }));
+    // رفع ملف البوت للمنتج (يتسلّم للعميل تلقائياً مع الطلب)
+    app.post("/api/v/store/botfile", express.raw({ type: "*/*", limit: "25mb" }), async (q, r) => {
+        try {
+            const id = Number(q.query.id), list = St.products(), p = list.find(x => x.id === id);
+            if (!p) throw new Error("احفظ المنتجات أولاً ثم ارفع الملف");
+            if (!Buffer.isBuffer(q.body) || !q.body.length) throw new Error("الملف فاضي");
+            let name = String(q.query.name || "bot.zip"); try { name = decodeURIComponent(name); } catch {}
+            name = path.basename(name).replace(/[^\w.\-\u0600-\u06FF ]/g, "_").slice(0, 100) || "bot.zip";
+            const stored = `${id}-${Date.now()}${path.extname(name).replace(/[^\w.]/g, "").slice(0, 10)}`;
+            fs.mkdirSync(St.FILES_DIR, { recursive: true });
+            if (p.file?.stored) fs.rmSync(St.filePath(p.file), { force: true });
+            fs.writeFileSync(path.join(St.FILES_DIR, stored), q.body);
+            p.file = { name, stored, size: q.body.length };
+            St.saveProducts(list);
+            r.json({ ok: true, file: p.file });
+        } catch (e) { r.status(400).json({ error: e.message }); }
+    });
+    app.post("/api/v/store/botfile/delete", h(async b => {
+        const list = St.products(), p = list.find(x => x.id === Number(b.id)); if (!p) throw new Error("المنتج غير موجود");
+        if (p.file?.stored) fs.rmSync(St.filePath(p.file), { force: true }); p.file = null; St.saveProducts(list);
     }));
     app.post("/api/v/store/products", h(async b => { if (!Array.isArray(b.list)) throw new Error("قائمة غلط"); St.saveProducts(b.list); }));
     app.post("/api/v/store/coupons", h(async b => { if (!Array.isArray(b.list)) throw new Error("قائمة غلط"); St.saveCoupons(b.list); }));

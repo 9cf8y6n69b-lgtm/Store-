@@ -92,7 +92,7 @@ function init(client) {
         }
     });
 
-    client.once("ready", () => {
+    client.once("clientReady", () => {
         try { require("./utils/ticketAdmin").restoreImages(client); } catch (e) { console.error("[void] restoreImages:", e.message); }
     });
     console.log(`[void] جاهز — ${client.commands.size} أمر، ${client.slashCommands.size} سلاش`);
