@@ -14,6 +14,10 @@ const {
 const E = MessageFlags.Ephemeral;
 // كل الـ Intents (نظام اللوقات والتكت والفلاتر يحتاجها). فعّل Presence + Server Members + Message Content من بوابة المطورين
 const client = new Client({ intents: Object.values(I).filter(v => typeof v === 'number'), partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.User, Partials.Reaction] });
+client.setMaxListeners(60); // البوت فيه أنظمة كثيرة تسمع للرسائل، فنرفع الحد ونشيل تحذير MaxListeners
+// أي خطأ غير متوقع يتسجل في اللوق بدل ما يطيّح البوت كله
+process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
+process.on('uncaughtException', e => console.error('[uncaughtException]', e));
 const voidLoader = require('./void/loader'); voidLoader.init(client); // نظام Void: تكت متقدم، لوقات، فلاتر، XP، هيلب
 const dashApi = require('./void/dashboardApi');
 const gld = () => client.guilds.cache.get(process.env.GUILD_ID);
@@ -844,8 +848,14 @@ client.once('clientReady', async () => {
   console.log('البوت شغال:', client.user.tag);
   setupEmojis().catch(e => console.log('emojis:', e.message));
   setTimeout(() => afkEnsure().catch(() => {}), 5000); setInterval(() => afkEnsure().catch(() => {}), 30000);
-  await new REST().setToken(process.env.TOKEN).put(Routes.applicationGuildCommands(client.user.id, process.env.GUILD_ID), { body: cmds });
+  try { await new REST().setToken(process.env.TOKEN).put(Routes.applicationGuildCommands(client.user.id, process.env.GUILD_ID), { body: cmds }); console.log(`تم تسجيل ${cmds.length} أمر سلاش`); }
+  catch (e) { console.error('❌ فشل تسجيل أوامر السلاش:', e.message, JSON.stringify(e.rawError?.errors || e.rawError || '').slice(0, 1500)); }
 });
-client.login(process.env.TOKEN);
+if (!process.env.TOKEN) console.error('❌ TOKEN غير موجود في Environment');
+if (!process.env.GUILD_ID) console.error('❌ GUILD_ID غير موجود في Environment');
+client.login(process.env.TOKEN).catch(e => {
+  console.error('❌ فشل تسجيل دخول البوت:', e.code || '', e.message);
+  console.error('الأسباب المحتملة: التوكن غلط/ناقص في Environment (TOKEN) — أو ما فعّلت Presence + Server Members + Message Content Intents من Developer Portal ← Bot.');
+});
 const port = process.env.PORT || 3000, host = process.env.HOST || '0.0.0.0';
 app.listen(port, host, () => console.log(`الداشبورد: http://0.0.0.0:${port}`));
