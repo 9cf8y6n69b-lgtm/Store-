@@ -160,7 +160,7 @@ async function tick() {
         } catch {}
     }
 }
-client.once("ready", () => {
+client.once("clientReady", () => {
     require("../Commands/Owners/owners").applyStatus(client);
     for (const g of client.guilds.cache.values()) cacheInvites(g);
     setInterval(tick, 30 * 1000);

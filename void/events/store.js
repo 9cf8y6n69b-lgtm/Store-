@@ -13,6 +13,7 @@ const {
 const St = require("../utils/store");
 const Subs = require("../utils/subs");
 const Ex = () => require("./storeExtras");
+const fsx = require("fs");
 const TS = require("../utils/ticketSystem");
 
 const EPH = 64;
@@ -151,6 +152,7 @@ async function onOrderButton(i, act, id, extra) {
         o.status = "paid"; o.paidAt = Date.now(); o.paidBy = i.user.id; St.saveOrder(o);
         Ex().sendInvoice(i.guild, o, i.channel).catch(() => {});
         require("./hosted").onPaid(i.guild, o, i.channel).catch(e => console.error("[hosted] onPaid:", e.message)); // لو الطلب فيه بوتات/باقة يظهر زر «أضف بوتك»
+        await sendBotFiles(i.guild, i.channel, o, i.user.id).catch(e => console.error("[store] botfiles:", e.message)); // ملف البوت المرفوع للمنتج
         St.addStaffPoints(i.user.id, "paid", c.pointsPaid);
         await i.reply("💳 تم تأكيد الدفع، يبدأ التنفيذ 🛠️");
         notify(o.userId, `💳 تم تأكيد الدفع لطلبك #${o.id}، بدأ التنفيذ 🛠️`);
@@ -170,6 +172,37 @@ async function onOrderButton(i, act, id, extra) {
         logStore(i.guild, new EmbedBuilder().setColor(0x118ab2).setTitle(`✅ تسليم طلب #${o.id}`).setDescription(`العميل <@${o.userId}>\nالمسلّم: ${i.user}`));
     }
     return refreshOrder(i.guild, o);
+}
+
+// ───────────── تسليم ملفات البوتات تلقائياً ─────────────
+// المنتج اللي له ملف بوت (من الداشبورد ← المتجر) يتسلّم للعميل في التكت والخاص بعد تأكيد الدفع،
+// ولو كل منتجات الطلب لها ملفات يتحول الطلب «تم التسليم» تلقائي
+async function sendBotFiles(guild, channel, o, by) {
+    const c = St.cfg(), all = St.products();
+    const found = o.items.map(it => ({ it, p: all.find(x => String(x.id) === String(it.id)) })).filter(x => x.p?.file && fsx.existsSync(St.filePath(x.p.file)));
+    if (!found.length || !channel) return false;
+    const user = await client.users.fetch(o.userId).catch(() => null);
+    for (const { it, p } of found) {
+        const title = p.botName || p.name, att = () => new AttachmentBuilder(St.filePath(p.file), { name: p.file.name });
+        const e = new EmbedBuilder().setColor(0x06d6a0).setTitle(`📦 ${title}`).setDescription(`${c.botFileMsg || ""}\n\n**الطلب:** #${o.id} • **الملف:** \`${p.file.name}\``.slice(0, 3500)).setFooter({ text: `${c.storeName || "NOVA STORE"}` });
+        await channel.send({ content: `<@${o.userId}>`, embeds: [e], files: [att()], allowedMentions: { users: [o.userId] } })
+            .catch(err => channel.send(`⚠️ تعذّر رفع **${title}** (${err.message}) — الملف أكبر من حد السيرفر؟ سلّمه يدوياً.`).catch(() => {}));
+        user?.send({ embeds: [e], files: [att()] }).catch(() => {});
+    }
+    if (c.autoDeliverFiles && found.length === o.items.length) await autoDeliver(guild, channel, o, by);
+    return true;
+}
+async function autoDeliver(guild, channel, o, by) {
+    const c = St.cfg();
+    o.status = "delivered"; o.deliveredAt = Date.now(); o.deliveredBy = by; St.saveOrder(o);
+    St.addStaffPoints(by, "delivered", c.pointsDeliver);
+    if (c.customerRole) (await guild.members.fetch(o.userId).catch(() => null))?.roles.add(c.customerRole).catch(() => {});
+    Ex().onDelivered(guild, o); Subs.fromOrder(o);
+    await channel.send({
+        content: `✅ تم تسليم الطلب تلقائياً! اشتراكاتك صارت في «اشتراكاتي» 🧩\n<@${o.userId}> قيّم تجربتك (نجوم + رأيك + صورة اختيارية):`,
+        components: [new ActionRowBuilder().addComponents([1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`st:rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji("⭐").setStyle(ButtonStyle.Secondary)))]
+    }).catch(() => {});
+    logStore(guild, new EmbedBuilder().setColor(0x118ab2).setTitle(`✅ تسليم تلقائي طلب #${o.id}`).setDescription(`العميل <@${o.userId}>\nملفات البوتات أُرسلت تلقائياً`));
 }
 
 // ───────────── المودالات ─────────────

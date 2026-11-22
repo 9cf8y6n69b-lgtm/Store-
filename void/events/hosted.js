@@ -12,7 +12,7 @@ const boot = () => {
         hb.init({ ...sales.hooks, notify: (uid, txt) => client.users.fetch(uid).then(u => u.send(txt)), mainToken: () => process.env.TOKEN || "" });
     } catch (e) { console.error("[hosted] init:", e); }
 };
-if (client.isReady()) boot(); else client.once("ready", boot);
+if (client.isReady()) boot(); else client.once("clientReady", boot);
 
 client.on("interactionCreate", async i => {
     try {

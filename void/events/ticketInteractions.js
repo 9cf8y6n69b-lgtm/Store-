@@ -319,30 +319,29 @@ function ticketEmbed(guild, ticket, config, user) {
 }
 
 function ticketRows(guild, ticket) {
+    // أزرار شفافة (Secondary) بإيموجيات: إغلاق • استدعاء العضو • تسمية • نسخة • طلب (المتجر)
     return [
         new MessageActionRow().addComponents(
-            button(guild, {
-                id: "tk:claim",
-                label: ticket.claimedBy ? "مستلم" : "استلام",
-                style: "PRIMARY",
-                emojiKey: "claim"
-            }).setDisabled(Boolean(ticket.claimedBy)),
-            button(guild, { id: "tk:transfer", label: "تحويل", style: "SECONDARY", emojiKey: "transfer" }),
-            button(guild, { id: "tk:call", label: "استدعاء", style: "SECONDARY", emojiKey: "call" }),
-            button(guild, { id: "tk:close", label: "إغلاق", style: "DANGER", emojiKey: "close" })
-        ),
-        new MessageActionRow().addComponents(
-            button(guild, { id: "tk:adduser", label: "إضافة عضو", style: "SUCCESS", emojiKey: "adduser" }),
-            button(guild, { id: "tk:rmuser", label: "إزالة عضو", style: "SECONDARY", emojiKey: "rmuser" }),
-            button(guild, { id: "tk:lock", label: ticket.locked ? "فتح القفل" : "قفل", style: "SECONDARY", emojiKey: ticket.locked ? "unlock" : "lock" }),
+            button(guild, { id: "tk:close", label: "إغلاق", style: "SECONDARY", emojiKey: "close" }),
+            button(guild, { id: "tk:call", label: "استدعاء العضو", style: "SECONDARY", emojiKey: "call" }),
             button(guild, { id: "tk:rename", label: "تسمية", style: "SECONDARY", emojiKey: "rename" }),
-            button(guild, { id: "tk:transcript", label: "نسخة", style: "SECONDARY", emojiKey: "transcript" })
-        ),
-        // نظام المتجر والشراء داخل التكت (منتجات ← دفع ← طلب بنفس التكت)
-        new MessageActionRow().addComponents(
-            new MessageButton().setCustomId("st:menu").setLabel("المتجر والشراء").setStyle("SUCCESS").setEmoji("🛒")
+            button(guild, { id: "tk:transcript", label: "نسخة", style: "SECONDARY", emojiKey: "transcript" }),
+            new MessageButton().setCustomId("st:menu").setLabel("طلب").setStyle("SECONDARY").setEmoji("🛒")
         )
     ];
+}
+
+// رسالة التكت الرئيسية: إمبيد (افتراضي) أو رسالة عادية بدون إمبيد حسب إعداد ticketNoEmbed من الداشبورد
+function ticketBody(guild, ticket, config, user) {
+    if (!config.ticketNoEmbed) {
+        const { embed, image } = ticketEmbed(guild, ticket, config, user);
+        return { embed, image, data: { embeds: [embed], files: image && image.file ? [image.file] : [] } };
+    }
+    const text = renderText(config.ticketText, {
+        user: `<@${ticket.userId}>`, staff: ticket.claimedBy ? `<@${ticket.claimedBy}>` : "الإدارة", number: num(ticket.number), category: ticket.categoryName
+    }).trim() || `${ico(guild, "star")} مرحباً بك، اشرح طلبك بالتفصيل وأرفق الصور إذا لزم.`;
+    const content = `${text}\n-# ${guild.name} • تكت ${num(ticket.number)} • ${ticket.categoryName}`.slice(0, 1900);
+    return { embed: null, image: null, data: { content, embeds: [], files: [] } };
 }
 
 // يحدّث الرسالة الرئيسية للتكت بعد استلام/تحويل
@@ -356,10 +355,10 @@ async function refreshTicketMessage(guild, channel, ticket, config) {
     if (!message) return;
 
     const user = await client.users.fetch(ticket.userId).catch(() => null);
-    const { embed } = ticketEmbed(guild, ticket, config, user);
+    const body = ticketBody(guild, ticket, config, user);
 
     await message
-        .edit({ embeds: [embed], components: ticketRows(guild, ticket) })
+        .edit({ content: config.ticketNoEmbed ? body.data.content : message.content, embeds: body.data.embeds, components: ticketRows(guild, ticket) })
         .catch(err => console.error("[TICKET] refresh error:", err.message));
 }
 
@@ -663,16 +662,16 @@ async function decideRequest(interaction, config, action, number) {
             requestMessageId: req.requestMessageId
         };
 
-        const { embed: tEmbed, image: tImage } = ticketEmbed(guild, ticket, config, user);
+        const body = ticketBody(guild, ticket, config, user), tEmbed = body.embed;
 
         const payload = {
-            content: `<@${req.userId}> <@${interaction.user.id}>`,
-            embeds: [tEmbed],
+            content: config.ticketNoEmbed ? `<@${req.userId}> <@${interaction.user.id}>\n${body.data.content}` : `<@${req.userId}> <@${interaction.user.id}>`,
+            embeds: body.data.embeds,
             components: ticketRows(guild, ticket),
             allowedMentions: { users: [req.userId, interaction.user.id] }
         };
 
-        if (tImage.file) payload.files = [tImage.file];
+        if (body.data.files.length) payload.files = body.data.files;
 
         let controlMessage = await channel.send(payload).catch(err => {
             console.error("[TICKET] control message error:", err.message);
@@ -681,8 +680,8 @@ async function decideRequest(interaction, config, action, number) {
 
         // لو فشل بالصورة نعيد بدونها عشان ما يبقى التكت فاضي
         if (!controlMessage) {
-            tEmbed.image = null;
-            controlMessage = await channel.send({ ...payload, files: [], embeds: [tEmbed] }).catch(err => {
+            if (tEmbed) tEmbed.image = null;
+            controlMessage = await channel.send({ ...payload, files: [], embeds: tEmbed ? [tEmbed] : [] }).catch(err => {
                 console.error("[TICKET] control message retry error:", err.message);
                 return null;
             });
@@ -774,10 +773,11 @@ async function claimTicket(interaction, config) {
         .catch(() => {});
 
     const user = await client.users.fetch(ticket.userId).catch(() => null);
-    const { embed } = ticketEmbed(guild, ticket, config, user);
+    const body = ticketBody(guild, ticket, config, user);
 
     await interaction.update({
-        embeds: [embed],
+        ...(config.ticketNoEmbed ? { content: `<@${ticket.userId}>\n${body.data.content}` } : {}),
+        embeds: body.data.embeds,
         components: ticketRows(guild, ticket)
     }).catch(() => {});
 
@@ -1275,9 +1275,9 @@ async function toggleLock(interaction, config) {
         .catch(() => {});
 
     const user = await client.users.fetch(ticket.userId).catch(() => null);
-    const { embed } = ticketEmbed(guild, ticket, config, user);
+    const body = ticketBody(guild, ticket, config, user);
 
-    await interaction.update({ embeds: [embed], components: ticketRows(guild, ticket) }).catch(() => {});
+    await interaction.update({ ...(config.ticketNoEmbed ? { content: `<@${ticket.userId}>\n${body.data.content}` } : {}), embeds: body.data.embeds, components: ticketRows(guild, ticket) }).catch(() => {});
 
     await interaction.channel.send({
         embeds: [
