@@ -133,7 +133,8 @@ mkTab('vtickets', 'التكت المتقدم', 'طلب ← قبول/رفض ← �
     E('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:16px' },
       btn('حفظ', 'save', async () => { await post('v/tickets', c); toast('انحفظت الإعدادات'); }),
       btn('إرسال اللوحة', 'send', async () => { await post('v/tickets', c); await post('v/tickets/send', { channelId: c.panelChannelId }); toast('انرسلت اللوحة'); }, ghost),
-      btn('رفع إيموجيات التكت للسيرفر', 'plus', async () => { const rep = await post('v/emojis'); emo.textContent = `انضاف: ${rep.created.length} • موجود: ${rep.existed.length} • فشل: ${rep.failed.length}\n` + rep.failed.slice(0, 5).join('\n'); }, ghost)), emo);
+      btn('تحديث إيموجيات NOVA STORE (استبدال القديم)', 'plus', async () => { if (!confirm('يحذف إيموجيات البوت القديمة ويرفع التصميم الجديد (ثابتة ومتحركة). يستغرق دقيقة أو أكثر. تكمل؟')) return; const rep = await post('v/emojis', { replace: true }); emo.textContent = `انضاف: ${rep.created.length} • فشل: ${rep.failed.length}\n` + rep.failed.slice(0, 5).join('\n'); }, ghost),
+      btn('رفع الناقص فقط', 'plus', async () => { const rep = await post('v/emojis'); emo.textContent = `انضاف: ${rep.created.length} • موجود: ${rep.existed.length} • فشل: ${rep.failed.length}\n` + rep.failed.slice(0, 5).join('\n'); }, ghost)), emo);
 });
 
 // ── اللوقات
