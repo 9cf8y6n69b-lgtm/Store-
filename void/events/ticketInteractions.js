@@ -326,7 +326,7 @@ function ticketRows(guild, ticket) {
             button(guild, { id: "tk:call", label: "استدعاء العضو", style: "SECONDARY", emojiKey: "call" }),
             button(guild, { id: "tk:rename", label: "تسمية", style: "SECONDARY", emojiKey: "rename" }),
             button(guild, { id: "tk:transcript", label: "نسخة", style: "SECONDARY", emojiKey: "transcript" }),
-            new MessageButton().setCustomId("st:menu").setLabel("طلب").setStyle("SECONDARY").setEmoji("🛒")
+            new MessageButton().setCustomId("st:menu").setLabel("طلب").setStyle("SECONDARY").setEmoji(V.btnEmoji(guild, "order") || "🛒")
         )
     ];
 }

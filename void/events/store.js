@@ -6,6 +6,7 @@
 const path = require("path");
 const fs = require("fs");
 const client = require("../index");
+const EmV = require("../utils/void"), em = (key, fb) => EmV.btnEmoji(client.guilds.cache.get(process.env.GUILD_ID) || { id: "0" }, key) || fb;
 const {
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
     ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder
@@ -52,10 +53,10 @@ function orderRows(o) {
     const done = ["delivered", "cancelled"].includes(o.status);
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`st:paid:${o.id}`).setLabel("تأكيد الدفع").setEmoji("💳").setStyle(ButtonStyle.Success).setDisabled(done || o.status !== "pending"),
-            new ButtonBuilder().setCustomId(`st:deliver:${o.id}`).setLabel("تم التسليم").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(done || o.status === "pending"),
-            new ButtonBuilder().setCustomId(`st:coupon:${o.id}`).setLabel("كوبون خصم").setEmoji("🎟️").setStyle(ButtonStyle.Secondary).setDisabled(done),
-            new ButtonBuilder().setCustomId(`st:cancel:${o.id}`).setLabel("إلغاء الطلب").setEmoji("✖️").setStyle(ButtonStyle.Danger).setDisabled(done)
+            new ButtonBuilder().setCustomId(`st:paid:${o.id}`).setLabel("تأكيد الدفع").setEmoji(em("coin", "💳")).setStyle(ButtonStyle.Success).setDisabled(done || o.status !== "pending"),
+            new ButtonBuilder().setCustomId(`st:deliver:${o.id}`).setLabel("تم التسليم").setEmoji(em("verified", "✅")).setStyle(ButtonStyle.Success).setDisabled(done || o.status === "pending"),
+            new ButtonBuilder().setCustomId(`st:coupon:${o.id}`).setLabel("كوبون خصم").setEmoji(em("percent", "🎟️")).setStyle(ButtonStyle.Secondary).setDisabled(done),
+            new ButtonBuilder().setCustomId(`st:cancel:${o.id}`).setLabel("إلغاء الطلب").setEmoji(em("reject", "✖️")).setStyle(ButtonStyle.Danger).setDisabled(done)
         )
     ];
 }
@@ -166,7 +167,7 @@ async function onOrderButton(i, act, id, extra) {
         if (c.customerRole) (await i.guild.members.fetch(o.userId).catch(() => null))?.roles.add(c.customerRole).catch(() => {});
         await i.reply({
             content: `✅ تم تسليم الطلب! اشتراكاتك صارت في «اشتراكاتي» 🧩\n<@${o.userId}> قيّم تجربتك (نجوم + رأيك + صورة اختيارية):`,
-            components: [new ActionRowBuilder().addComponents([1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`st:rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji("⭐").setStyle(ButtonStyle.Secondary)))]
+            components: [new ActionRowBuilder().addComponents([1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`st:rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji(em("star", "⭐")).setStyle(ButtonStyle.Secondary)))]
         });
         notify(o.userId, `✅ تم تسليم طلبك #${o.id}! شكراً لثقتك في NOVA STORE 💜`);
         logStore(i.guild, new EmbedBuilder().setColor(0x118ab2).setTitle(`✅ تسليم طلب #${o.id}`).setDescription(`العميل <@${o.userId}>\nالمسلّم: ${i.user}`));
@@ -200,7 +201,7 @@ async function autoDeliver(guild, channel, o, by) {
     Ex().onDelivered(guild, o); Subs.fromOrder(o);
     await channel.send({
         content: `✅ تم تسليم الطلب تلقائياً! اشتراكاتك صارت في «اشتراكاتي» 🧩\n<@${o.userId}> قيّم تجربتك (نجوم + رأيك + صورة اختيارية):`,
-        components: [new ActionRowBuilder().addComponents([1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`st:rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji("⭐").setStyle(ButtonStyle.Secondary)))]
+        components: [new ActionRowBuilder().addComponents([1, 2, 3, 4, 5].map(n => new ButtonBuilder().setCustomId(`st:rate:${o.id}:${n}`).setLabel(`${n}`).setEmoji(em("star", "⭐")).setStyle(ButtonStyle.Secondary)))]
     }).catch(() => {});
     logStore(guild, new EmbedBuilder().setColor(0x118ab2).setTitle(`✅ تسليم تلقائي طلب #${o.id}`).setDescription(`العميل <@${o.userId}>\nملفات البوتات أُرسلت تلقائياً`));
 }
@@ -231,7 +232,7 @@ async function onModal(i, parts) {
         return i.reply({
             content: "📷 تبي تضيف **صورة** مع تقييمك؟ (مثلاً صورة البوت أو لقطة من التجربة)",
             components: [new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`st:rimg:${o.id}`).setLabel("إضافة صورة").setEmoji("📷").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`st:rimg:${o.id}`).setLabel("إضافة صورة").setEmoji(em("image", "📷")).setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId(`st:rskip:${o.id}`).setLabel("نشر بدون صورة").setEmoji("✅").setStyle(ButtonStyle.Secondary))],
             flags: EPH
         });
