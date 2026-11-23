@@ -103,7 +103,7 @@ function mount(app, { client, gld, db, save, h }) {
         store[path.basename(file)] = img.b64; Pro.set(`ticket_imgs_${g.id}`, store);
         cfg[field] = file; TA.save(g.id, cfg);
     }));
-    app.post("/api/v/emojis", h(async () => V.uploadEmojis(need())));
+    app.post("/api/v/emojis", h(async b => V.uploadEmojis(need(), { replace: !!(b && b.replace) })));
 
     // ───────────── اللوقات ─────────────
     app.get("/api/v/logs", h(async () => { const g = need(), c = LP.getCfg(g.id); return { types: LOG_TYPES.map(t => ({ key: t.key, label: t.label, emoji: t.emoji })), map: c.types, prisonRole: c.prisonRole || null }; }));

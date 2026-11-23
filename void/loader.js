@@ -94,6 +94,7 @@ function init(client) {
 
     client.once("clientReady", () => {
         try { require("./utils/ticketAdmin").restoreImages(client); } catch (e) { console.error("[void] restoreImages:", e.message); }
+        require("./utils/void").ensureEmojis(client).catch(e => console.error("[void] emojis:", e.message));
     });
     console.log(`[void] جاهز — ${client.commands.size} أمر، ${client.slashCommands.size} سلاش`);
 }
