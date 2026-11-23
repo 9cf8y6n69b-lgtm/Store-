@@ -32,10 +32,18 @@ const subspanel = {
     name: "subspanel", aliases: ["لوحة-اشتراكاتي", "subs-panel"], description: "يرسل لوحة «اشتراكاتي» بصورة وزر في الروم الحالي",
     run: async (client, ctx) => {
         if (!ctx.guild) return;
-        if (!TS.isStaff(ctx.member, TS.getConfig(ctx.guild.id))) return ctx.reply({ content: "❌ للإدارة فقط", ...mute });
-        const { sendPanel } = require("../../events/subs");
-        await sendPanel(ctx.channel);
-        return typeof ctx.isCommand === "function" && ctx.isCommand() ? ctx.reply({ content: "✅ تم إرسال اللوحة", ephemeral: true }) : ctx.delete?.().catch(() => {});
+        const slash = typeof ctx.isChatInputCommand === "function" && ctx.isChatInputCommand();
+        if (!TS.isStaff(ctx.member, TS.getConfig(ctx.guild.id))) return ctx.reply({ content: "❌ للإدارة فقط", ...(slash ? { ephemeral: true } : mute) });
+        if (slash) await ctx.deferReply({ ephemeral: true });
+        try {
+            const { sendPanel } = require("../../events/subs");
+            await sendPanel(ctx.channel);
+            return slash ? ctx.editReply("✅ تم إرسال اللوحة") : ctx.delete?.().catch(() => {});
+        } catch (e) {
+            console.error("[subspanel]", e);
+            const msg = `❌ ما انرسلت اللوحة: ${String(e.message).slice(0, 300)}`;
+            return slash ? ctx.editReply(msg) : ctx.reply({ content: msg, ...mute });
+        }
     }
 };
 const mysubs = {
