@@ -17,13 +17,15 @@ const ICON_PATH = path.join(ROOT, "..", "assets", "logo.png");
 const EMOJI_DIR = path.join(ROOT, "emojis");
 
 // مفاتيح الإيموجيات = أسماء ملفات emojis/void_<key>.png
-const EMOJI_KEYS = [
-    "void", "claim", "transfer", "call", "close", "accept", "reject", "ticket", "user", "type",
-    "clock", "star", "history", "heart", "shield", "unlock", "ban", "kick", "mic", "micoff",
-    "speaker", "chat", "gear", "link", "warning", "info", "trophy", "search", "trash", "edit",
-    "image", "tkgold", "tkcrown", "lock", "adduser", "rmuser", "rename", "note", "transcript", "priority",
-    "support", "verified", "panel", "sparkle", "save"
-];  // حد ديسكورد 50 إيموجي للسيرفر بدون بوست
+// كل ملف في void/emojis يصير إيموجي: void_<key>.png (ثابت) أو void_<key>.gif (متحرك) — المفتاح <key>
+const EMOJI_ITEMS = (() => {
+    try {
+        return fs.readdirSync(EMOJI_DIR).filter(f => /^void_[\w]+\.(png|gif)$/.test(f)).sort()
+            .map(f => ({ key: f.replace(/^void_/, "").replace(/\.(png|gif)$/, ""), name: f.replace(/\.(png|gif)$/, ""), file: path.join(EMOJI_DIR, f), animated: f.endsWith(".gif") }));
+    } catch { return []; }
+})();
+const EMOJI_KEYS = EMOJI_ITEMS.map(x => x.key);
+const EMOJI_DESIGN = "nova-store-2"; // غيّرها لو غيّرت تصميم الإيموجيات ليتم استبدالها تلقائياً  // حد ديسكورد 50 إيموجي للسيرفر بدون بوست
 
 
 // رموز زخرفية (مو إيموجي) تظهر في النص لو الإيموجيات المخصصة ما انرفعت
@@ -52,40 +54,39 @@ function btnEmoji(guild, key) {
     return emojiMap(guild.id)[key] || null;
 }
 
-// رفع الإيموجيات للسيرفر وحفظ الـ IDs
-async function uploadEmojis(guild) {
+// رفع الإيموجيات كإيموجيات للتطبيق (Application Emojis): ما تاخذ من خانات السيرفر (50) وتشتغل في الأزرار والرسائل،
+// ثابتة ومتحركة. replace=true يحذف القديم ويرفع التصميم الجديد.
+async function uploadEmojis(guild, { replace = false } = {}) {
     const map = { ...emojiMap(guild.id) };
     const report = { created: [], existed: [], failed: [] };
+    const app = guild.client.application;
+    await app.fetch().catch(() => {});
+    const have = await app.emojis.fetch().catch(() => null);
+    if (!have) { report.failed.push("تعذّر قراءة إيموجيات التطبيق"); return report; }
 
-    await guild.emojis.fetch().catch(() => {});
-
-    for (const key of EMOJI_KEYS) {
-        const name = `void_${key}`;
-        const file = path.join(EMOJI_DIR, `${name}.png`);
-        if (!fs.existsSync(file)) {
-            report.failed.push(`${name} (الملف ناقص)`);
-            continue;
+    for (const it of EMOJI_ITEMS) {
+        let emoji = have.find(e => e.name === it.name);
+        if (emoji && replace) { await emoji.delete().catch(() => {}); emoji = null; }
+        if (emoji) { report.existed.push(it.name); }
+        else {
+            try { emoji = await app.emojis.create({ attachment: it.file, name: it.name }); report.created.push(it.name); }
+            catch (error) { report.failed.push(`${it.name} (${String(error.message).slice(0, 60)})`); continue; }
         }
-
-        let emoji = guild.emojis.cache.find(e => e.name === name);
-
-        if (emoji) {
-            report.existed.push(name);
-        } else {
-            try {
-                emoji = await guild.emojis.create(file, name);
-                report.created.push(name);
-            } catch (error) {
-                report.failed.push(`${name} (${String(error.message).slice(0, 60)})`);
-                continue;
-            }
-        }
-
-        map[key] = emoji.toString();
+        map[it.key] = emoji.toString();
     }
-
     Pro.set(emojiKey(guild.id), map);
     return report;
+}
+
+// عند التشغيل: لو تصميم الإيموجيات تغيّر أو فيه إيموجي ناقص نرفعها تلقائي
+async function ensureEmojis(client) {
+    const g = client.guilds.cache.get(process.env.GUILD_ID); if (!g) return;
+    const replace = Pro.get("void_emoji_design") !== EMOJI_DESIGN, map = emojiMap(g.id);
+    if (!replace && EMOJI_ITEMS.every(x => map[x.key])) return;
+    console.log(`[void] ${replace ? "استبدال" : "رفع"} الإيموجيات (${EMOJI_ITEMS.length})...`);
+    const r = await uploadEmojis(g, { replace });
+    if (!r.failed.length) Pro.set("void_emoji_design", EMOJI_DESIGN);
+    console.log(`[void] إيموجيات: انضاف ${r.created.length} • موجود ${r.existed.length} • فشل ${r.failed.length}${r.failed.length ? " — " + r.failed.slice(0, 3).join(" | ") : ""}`);
 }
 
 // ───────────── البانر ─────────────
@@ -176,6 +177,7 @@ module.exports = {
     BANNER_PATH,
     ICON_PATH,
     EMOJI_KEYS,
+    ensureEmojis,
     icon,
     btnEmoji,
     uploadEmojis,

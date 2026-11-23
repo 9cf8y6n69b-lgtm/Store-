@@ -8,7 +8,7 @@ const DEFAULT_CFG = {
     banner: true, remindDays: [3, 1], pingRole: ""
 };
 const cfg = () => ({ ...DEFAULT_CFG, ...(Pro.get(K.cfg) || {}) });
-const setCfg = p => { const c = { ...cfg(), ...p }; Pro.set(K.cfg, c); return c; };
+const setCfg = p => { const c = { ...cfg() }; for (const [k, v] of Object.entries(p || {})) if (v !== undefined && v !== null) c[k] = v; Pro.set(K.cfg, c); return c; };
 
 const all = () => Pro.get(K.list) || [];
 const save = l => Pro.set(K.list, l);
